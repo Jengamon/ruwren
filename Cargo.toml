@@ -1,11 +1,16 @@
 [package]
 name = "ruwren"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Jengamon <bob.hostern@gmail.com>"]
 edition = "2018"
+license = "MIT"
+repository = "https://github.com/Jengamon/ruwren"
+homepage = "http://wren.io"
+keywords = ["wren", "scripting", "embed"]
+description = "Rusty bindings to Wren programming language"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-wren-sys = {path = "../wren-sys"}
+ruwren-sys = "0.2.0"
 # libc = "0.2"
