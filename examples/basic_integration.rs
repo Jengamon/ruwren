@@ -47,14 +47,14 @@ impl Math {
 
 create_module!(
     class("Vector") crate::Vector => vector {
-        instance("x()") x,
-        instance("y()") y,
-        instance("set_x(_)") set_x,
-        instance("set_y(_)") set_y
+        instance(getter "x") x,
+        instance(getter "y") y,
+        instance(setter "x") set_x,
+        instance(setter "y") set_y
     }
 
     class("Math") crate::Math => math {
-        static("new_vector(_,_)") new_vector
+        static(fn "new_vector", 2) new_vector
     }
 
     module => maths
@@ -63,10 +63,11 @@ create_module!(
 static MATHS_MODULE_SRC: &'static str = "
 foreign class Vector {
     construct invalid() {}
-    foreign x()
-    foreign y()
-    foreign set_x(x)
-    foreign set_y(y)
+    foreign x=(x)
+    foreign y=(y)
+
+    foreign x
+    foreign y
 }
 
 class Math {
@@ -92,12 +93,12 @@ fn main() {
         System.print(poke_vector.try())
         var vector = Math.new_vector(3, 4)
         System.print(vector)
-        System.print(vector.x())
-        System.print(vector.y())
-        vector.set_x(10.2)
-        vector.set_y(vector.x() * 2)
-        System.print(vector.x())
-        System.print(vector.y())
+        System.print(vector.x)
+        System.print(vector.y)
+        vector.x = (10.2)
+        vector.y = (vector.x * 2)
+        System.print(vector.x)
+        System.print(vector.y)
         ");
 
         if let Err(err) = res {

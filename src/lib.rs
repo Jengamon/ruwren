@@ -68,7 +68,7 @@ extern "C" fn wren_bind_foreign_method(vm: *mut WrenVM, mdl: *const raw::c_char,
     if let Some(library) = conf.library {
         if let Some(rc) = library.get_foreign_class(module.to_string_lossy(), class.to_string_lossy()) {
             rc.methods.function_pointers.iter().find(|mp| {
-                if mp.signature == signature.to_string_lossy() && mp.is_static == is_static {
+                if mp.signature.as_wren_string() == signature.to_string_lossy() && mp.is_static == is_static {
                     true
                 } else {
                     false
@@ -214,7 +214,7 @@ pub struct ClassObjectPointers {
 #[derive(Debug)]
 pub struct MethodPointer {
     pub is_static: bool,
-    pub signature: String,
+    pub signature: FunctionSignature,
     pub pointer: unsafe extern "C" fn(*mut WrenVM),
 }
 
@@ -265,10 +265,10 @@ macro_rules! create_module {
         $(
             class($mname:expr) $name:ty => $md:ident {
                 $(
-                    static($sgns:expr) $sf:ident 
+                    static($lbls:ident $($sgns:expr),+) $sf:ident 
                 ),*
                 $(
-                    instance($sgni:expr) $inf:ident
+                    instance($lbli:ident $($sgni:expr),+) $inf:ident
                 ),*
             }
         )+
@@ -341,14 +341,14 @@ macro_rules! create_module {
                             $(
                                 $crate::MethodPointer {
                                     pointer: $md::$sf,
-                                    signature: $sgns.into(),
+                                    signature: $crate::create_module!(@sgn $lbls $($sgns),+),
                                     is_static: true,
                                 }
                             ),*
                             $(
                                 $crate::MethodPointer {
                                     pointer: $md::$inf,
-                                    signature: $sgni.into(),
+                                    signature: $crate::create_module!(@sgn $lbli $($sgni),+),
                                     is_static: false,
                                 }
                             ),*
@@ -368,6 +368,18 @@ macro_rules! create_module {
                 lib.module(stringify!($modl), module);
             }
         }
+    };
+
+    (@sgn fn $nom:expr, $arity:expr) => {
+        $crate::FunctionSignature::new_function($nom, $arity)
+    };
+
+    (@sgn getter $name:expr) => {
+        $crate::FunctionSignature::new_getter($name)
+    };
+
+    (@sgn setter $name:expr) => {
+        $crate::FunctionSignature::new_setter($name)
     };
 
     (@fn static $name:ty => $s:ident) => {
@@ -573,6 +585,22 @@ impl FunctionSignature {
             FunctionSignature::Function { name, arity } => format!("{}({})", name, vec!["_".to_string(); *arity].join(",")),
             FunctionSignature::Getter(name) => format!("{}", name),
             FunctionSignature::Setter(name) => format!("{}=(_)", name),
+        }
+    }
+
+    pub fn arity(&self) -> usize {
+        match self {
+            FunctionSignature::Function { arity, .. } => *arity,
+            FunctionSignature::Getter(_) => 0,
+            FunctionSignature::Setter(_) => 1,
+        }
+    }
+
+    pub fn name(&self) -> String {
+        match self {
+            FunctionSignature::Function { name, .. } => name.clone(),
+            FunctionSignature::Getter(name) => name.clone(),
+            FunctionSignature::Setter(name) => format!("{}=", name),
         }
     }
 }
@@ -1001,13 +1029,13 @@ mod tests {
 
     create_module! {
         class("RawPoint") crate::tests::Point => point {
-            instance("x()") x,
-            instance("set_x(_)") set_x
+            instance(fn "x", 0) x,
+            instance(fn "set_x", 1) set_x
         }
 
         class("Math") crate::tests::Math => math {
-            static("add5(_)") add5,
-            static("pointy()") pointy
+            static(fn "add5", 1) add5,
+            static(fn "pointy", 0) pointy
         }
 
         module => main
