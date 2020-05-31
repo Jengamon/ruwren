@@ -12,30 +12,26 @@ impl Class for Vector {
 }
 
 impl Vector {
-    fn x(vm: &VM) {
+    fn x(&self, vm: &VM) {
         vm.ensure_slots(1);
-        let vec: &Vector = vm.get_slot_foreign(0).expect("Calling Vector method on non-Vector object");
-        vm.set_slot_double(0, vec.x);
+        vm.set_slot_double(0, self.x);
     }
 
-    fn y(vm: &VM) {
+    fn y(&self, vm: &VM) {
         vm.ensure_slots(1);
-        let vec: &Vector = vm.get_slot_foreign(0).expect("Calling Vector method on non-Vector object");
-        vm.set_slot_double(0, vec.y);
+        vm.set_slot_double(0, self.y);
     }
 
-    fn set_x(vm: &VM) {
+    fn set_x(&mut self, vm: &VM) {
         vm.ensure_slots(2);
-        let vec: &mut Vector = vm.get_slot_foreign_mut(0).expect("Calling Vector method on non-Vector object");
         if vm.get_slot_type(1) != SlotType::Num { panic!("x can only be set to <num>") }
-        vec.x = vm.get_slot_double(1);
+        self.x = vm.get_slot_double(1);
     }
 
-    fn set_y(vm: &VM) {
+    fn set_y(&mut self, vm: &VM) {
         vm.ensure_slots(2);
-        let vec: &mut Vector = vm.get_slot_foreign_mut(0).expect("Calling Vector method on non-Vector object");
         if vm.get_slot_type(1) != SlotType::Num { panic!("y can only be set to <num>") }
-        vec.y = vm.get_slot_double(1);
+        self.y = vm.get_slot_double(1);
     }
 }
 

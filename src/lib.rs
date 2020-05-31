@@ -405,7 +405,12 @@ macro_rules! create_class_objects {
             let vm = std::rc::Weak::upgrade(&conf.vm).expect(&format!("Failed to access VM at {:p}", &conf.vm));
             set_hook(Box::new(|_| {}));
             let vm_borrow = AssertUnwindSafe(vm.borrow());
-            match catch_unwind(|| <$name>::$inf(&*vm_borrow)) {
+            match catch_unwind(|| {
+                vm_borrow.ensure_slots(1);
+                let inst = vm_borrow.get_slot_foreign_mut::<$name>(0)
+                    .expect(&format!("Tried to call {0} of {1:?} on non-{1:?} type", stringify!($inf), std::any::TypeId::of::<$name>()));
+                inst.$inf(&*vm_borrow)
+            }) {
                 Ok(_) => (),
                 Err(err) => {
                     let err_string = if let Some(strg) = err.downcast_ref::<String>() {
@@ -833,18 +838,16 @@ mod tests {
     }
 
     impl Point {
-        fn x(vm: &super::VM) {
+        fn x(&self, vm: &super::VM) {
             vm.ensure_slots(1);
-            let obj = vm.get_slot_foreign::<Point>(0).expect("Can only be called on Point class");
-            vm.set_slot_double(0, obj.x);
+            vm.set_slot_double(0, self.x);
         }
 
-        fn set_x(vm: &super::VM) {
+        fn set_x(&mut self, vm: &super::VM) {
             vm.ensure_slots(2);
-            let obj = vm.get_slot_foreign_mut::<Point>(0).expect("Can only be called on Point class");
             if vm.get_slot_type(1) != super::SlotType::Num { panic!("x must be a number"); }
             let new_x = vm.get_slot_double(1);
-            obj.x = new_x;
+            self.x = new_x;
         }
     }
 
