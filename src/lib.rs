@@ -268,10 +268,7 @@ macro_rules! create_module {
         $(
             class($mname:expr) $name:ty => $md:ident {
                 $(
-                    static($lbls:ident $($sgns:expr),+) $sf:ident 
-                ),*
-                $(
-                    instance($lbli:ident $($sgni:expr),+) $inf:ident
+                    $si:ident($lbls:ident $($sgns:expr),+) $id:ident
                 ),*
             }
         )+
@@ -329,11 +326,7 @@ macro_rules! create_module {
                 }
 
                 $(
-                    $crate::create_module!(@fn static $name => $sf);
-                )*
-
-                $(
-                    $crate::create_module!(@fn instance $name => $inf);
+                    $crate::create_module!(@fn $si $name => $id);
                 )*
             }
 
@@ -344,18 +337,7 @@ macro_rules! create_module {
                     $crate::ClassObjectPointers {
                         function_pointers: vec![
                             $(
-                                $crate::MethodPointer {
-                                    pointer: $md::$sf,
-                                    signature: $crate::create_module!(@sgn $lbls $($sgns),+),
-                                    is_static: true,
-                                }
-                            ),*
-                            $(
-                                $crate::MethodPointer {
-                                    pointer: $md::$inf,
-                                    signature: $crate::create_module!(@sgn $lbli $($sgni),+),
-                                    is_static: false,
-                                }
+                                $crate::create_module!(@md $si $id $lbls $md $($sgns),+)
                             ),*
                         ]
                     }
@@ -372,6 +354,22 @@ macro_rules! create_module {
                 )+;
                 lib.module(stringify!($modl), module);
             }
+        }
+    };
+
+    (@md static $id:ident $lbls:ident $md:ident $($sgns: expr),+) => {
+        $crate::MethodPointer {
+            pointer: $md::$id,
+            signature: $crate::create_module!(@sgn $lbls $($sgns),+),
+            is_static: true,
+        }
+    };
+
+    (@md instance $id:ident $lbls:ident $md:ident $($sgns: expr),+) => {
+        $crate::MethodPointer {
+            pointer: $md::$id,
+            signature: $crate::create_module!(@sgn $lbls $($sgns),+),
+            is_static: false,
         }
     };
 
@@ -605,8 +603,12 @@ pub struct VMWrapper<'a>(EVM<'a>);
 
 impl<'a> VMWrapper<'a> {
     pub fn call(&self, signature: FunctionSignature) -> Result<(), VMError> {
+        let handle = self.make_call_handle(signature);
+        self.call_handle(&handle)
+    }
+
+    pub fn call_handle(&self, handle: &Handle) -> Result<(), VMError> {
         let vm = self.0.borrow();
-        let handle = vm.make_call_handle(signature);
         match unsafe { wren_sys::wrenCall(vm.vm, handle.handle) } {
             wren_sys::WrenInterpretResult_WREN_RESULT_SUCCESS => Ok(()),
             wren_sys::WrenInterpretResult_WREN_RESULT_COMPILE_ERROR => unreachable!("wrenCall doesn't compile anything"),
@@ -667,6 +669,33 @@ impl<'a> VMWrapper<'a> {
     pub fn execute<F>(&self, mut f: F) where F: FnMut(&VM) {
         f(&self.0.borrow())
     }
+
+    pub fn get_slot_handle(&self, slot: SlotId) -> Rc<Handle> {
+        Rc::new(Handle {
+            handle: unsafe {
+                wren_sys::wrenGetSlotHandle(self.0.borrow().vm, slot as raw::c_int)
+            },
+            wvm: self.0.borrow().vm,
+            vm: marker::PhantomData
+        })
+    }
+
+    pub fn set_slot_handle(&self, slot: SlotId, handle: &Handle) {
+        unsafe {
+            wren_sys::wrenSetSlotHandle(self.0.borrow().vm, slot as raw::c_int, handle.handle)
+        }
+    }
+
+    pub fn make_call_handle(&self, signature: FunctionSignature) -> Rc<Handle> {
+        VM::make_call_handle(self.0.borrow().vm, signature)
+    }
+
+    /// Instruct Wren to start a garbage collection cycle
+    pub fn collect_garbage(&self) {
+        unsafe {
+            wren_sys::wrenCollectGarbage(self.0.borrow().vm)
+        }
+    }
 }
 
 // TODO Expose more VM configuration (initalHeap, maxHeap, etc.)
@@ -707,13 +736,6 @@ impl<'a> VM<'a> {
         let vm = unsafe { wren_sys::wrenNewVM(&mut config) };
         wvm.borrow_mut().vm = vm;
         VMWrapper(wvm)
-    }
-
-    // manual GC trigger
-    pub fn collect_garbage(&self) {
-        unsafe {
-            wren_sys::wrenCollectGarbage(self.vm)
-        }
     }
 
     // Slot and Handle API
@@ -870,22 +892,6 @@ impl<'a> VM<'a> {
         }
     }
 
-    pub fn get_slot_handle(&self, slot: SlotId) -> Rc<Handle> {
-        Rc::new(Handle {
-            handle: unsafe {
-                wren_sys::wrenGetSlotHandle(self.vm, slot as raw::c_int)
-            },
-            wvm: self.vm,
-            vm: marker::PhantomData
-        })
-    }
-
-    pub fn set_slot_handle(&self, slot: SlotId, handle: &Handle) {
-        unsafe {
-            wren_sys::wrenSetSlotHandle(self.vm, slot as raw::c_int, handle.handle)
-        }
-    }
-
     pub fn get_slot_foreign<T: 'static + ClassObject>(&self, slot: SlotId) -> Option<&T> {
         self.get_slot_foreign_mut(slot).map(|mr| &*mr)
     }
@@ -950,13 +956,13 @@ impl<'a> VM<'a> {
         }
     }
 
-    fn make_call_handle(&self, signature: FunctionSignature) -> Rc<Handle> {
+    fn make_call_handle<'b>(vm: *mut WrenVM, signature: FunctionSignature) -> Rc<Handle<'b>> {
         let signature = ffi::CString::new(signature.as_wren_string()).expect("signature conversion failed");
         Rc::new(Handle {
             handle: unsafe {
-                wren_sys::wrenMakeCallHandle(self.vm, signature.as_ptr())
+                wren_sys::wrenMakeCallHandle(vm, signature.as_ptr())
             },
-            wvm: self.vm,
+            wvm: vm,
             vm: marker::PhantomData
         })
     }
@@ -1129,9 +1135,9 @@ mod tests {
         vm.execute(|vm| {
             vm.ensure_slots(2);
             vm.get_variable("main", "GameEngine", 0);
-            let _ = vm.get_slot_handle(0);
             vm.set_slot_double(1, 32.2);
         });
+        let _ = vm.get_slot_handle(0);
         let interp = vm.call(super::FunctionSignature::new_function("update", 1));
         if let Err(e) = interp.clone() {
             eprintln!("{}", e);
@@ -1179,9 +1185,9 @@ mod tests {
         vm.execute(|vm| {
             vm.ensure_slots(2);
             vm.get_variable("main", "GameEngine", 0);
-            let _ = vm.get_slot_handle(0);
             vm.set_slot_double(1, 32.2);
         });
+        let _ = vm.get_slot_handle(0);
         let interp = vm.call(super::FunctionSignature::new_function("update", 1));
         assert!(interp.is_ok());
         vm.execute(|vm| {
@@ -1224,11 +1230,11 @@ mod tests {
         vm.execute(|vm| {
             vm.ensure_slots(2);
             vm.get_variable("main", "GameEngine", 0);
-            let _ = vm.get_slot_handle(0);
             vm.set_slot_double(1, 32.2);
         });
 
         let interp = vm.call(super::FunctionSignature::new_function("update", 1));
+        let _ = vm.get_slot_handle(0);
         if let Err(e) = interp.clone() {
             eprintln!("{}", e);
         }
