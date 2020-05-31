@@ -65,7 +65,7 @@ extern "C" fn wren_bind_foreign_method(vm: *mut WrenVM, mdl: *const raw::c_char,
     let class = unsafe { ffi::CStr::from_ptr(class) };
     let signature = unsafe { ffi::CStr::from_ptr(sgn) };
 
-    if let Some(library) = conf.library {
+    if let Some(ref library) = conf.library {
         if let Some(rc) = library.get_foreign_class(module.to_string_lossy(), class.to_string_lossy()) {
             rc.methods.function_pointers.iter().find(|mp| {
                 if mp.signature.as_wren_string() == signature.to_string_lossy() && mp.is_static == is_static {
@@ -92,7 +92,7 @@ extern "C" fn wren_bind_foreign_class(vm: *mut WrenVM, mdl: *const raw::c_char, 
     let module = unsafe { ffi::CStr::from_ptr(mdl) };
     let class = unsafe { ffi::CStr::from_ptr(class) };
 
-    if let Some(library) = conf.library {
+    if let Some(ref library) = conf.library {
         let rc = library.get_foreign_class(module.to_string_lossy(), class.to_string_lossy());
         if let Some(rc) = rc {
             fcm.allocate = Some(rc.construct);
@@ -161,7 +161,7 @@ impl std::error::Error for VMError {}
 pub struct Handle<'a> {
     handle: *mut WrenHandle,
     wvm: *mut WrenVM,
-    vm: marker::PhantomData<&'a VM<'a>>
+    vm: marker::PhantomData<&'a VM>
 }
 
 impl<'a> Drop for Handle<'a> {
@@ -177,7 +177,7 @@ impl<'a> Drop for Handle<'a> {
 pub struct FunctionHandle<'a>(Handle<'a>);
 
 /// Simulates a module structure for foreign functions
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ModuleLibrary {
     modules: HashMap<String, Module>,
 }
@@ -198,7 +198,7 @@ impl ModuleLibrary {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct RuntimeClass {
     construct: extern "C" fn(*mut WrenVM),
     destruct: extern "C" fn(*mut ffi::c_void),
@@ -208,17 +208,17 @@ struct RuntimeClass {
     type_id: any::TypeId,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Module {
     classes: HashMap<String, RuntimeClass>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ClassObjectPointers {
     pub function_pointers: Vec<MethodPointer>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MethodPointer {
     pub is_static: bool,
     pub signature: FunctionSignature,
@@ -505,7 +505,7 @@ pub trait ModuleScriptLoader {
     fn load_script(&mut self, name: String) -> Option<String>;
 }
 
-pub type EVM<'a> = Rc<RefCell<VM<'a>>>;
+pub type EVM = Rc<RefCell<VM>>;
 
 pub trait Printer {
     fn print(&mut self, s: String);
@@ -524,18 +524,17 @@ impl ModuleScriptLoader for NullLoader {
 }
 
 #[derive(Debug)]
-pub struct VM<'l> {
+pub struct VM {
     pub vm: *mut WrenVM,
     error_recv: Receiver<WrenError>,
-    module: std::marker::PhantomData<&'l ModuleLibrary>
 }
 
 /// A mostly internal class that is exposed so that some externally generated code can access it.
-pub struct UserData<'a> {
+pub struct UserData {
     error_channel: Sender<WrenError>,
     printer: Box<dyn Printer>,
-    pub vm: Weak<RefCell<VM<'a>>>, // is used a *lot* by externally generated code.
-    library: Option<&'a ModuleLibrary>,
+    pub vm: Weak<RefCell<VM>>, // is used a *lot* by externally generated code.
+    library: Option<ModuleLibrary>,
     loader: Box<dyn ModuleScriptLoader>,
 }
 
@@ -603,9 +602,9 @@ impl FunctionSignature {
     }
 }
 
-pub struct VMWrapper<'a>(EVM<'a>);
+pub struct VMWrapper(EVM);
 
-impl<'a> VMWrapper<'a> {
+impl VMWrapper {
     pub fn call(&self, signature: FunctionSignature) -> Result<(), VMError> {
         let handle = self.make_call_handle(signature);
         self.call_handle(&handle)
@@ -702,17 +701,17 @@ impl<'a> VMWrapper<'a> {
     }
 }
 
-pub struct VMConfig<'a> {
+pub struct VMConfig {
     printer: Box<dyn Printer>,
     script_loader: Box<dyn ModuleScriptLoader>,
-    library: Option<&'a ModuleLibrary>,
+    library: Option<ModuleLibrary>,
     initial_heap_size: usize,
     min_heap_size: usize,
     heap_growth_percent: usize,
 }
 
-impl<'a> VMConfig<'a> {
-    pub fn new() -> VMConfig<'a> {
+impl VMConfig {
+    pub fn new() -> VMConfig {
         VMConfig {
             printer: Box::new(PrintlnPrinter),
             script_loader: Box::new(NullLoader),
@@ -733,8 +732,8 @@ impl<'a> VMConfig<'a> {
         self
     }
 
-    pub fn library(mut self, l: &'a ModuleLibrary) -> Self {
-        self.library = Some(l);
+    pub fn library(mut self, l: &ModuleLibrary) -> Self {
+        self.library = Some(l.clone());
         self
     }
 
@@ -758,14 +757,13 @@ impl<'a> VMConfig<'a> {
         self
     }
 
-    pub fn build(self) -> VMWrapper<'a> {
+    pub fn build(self) -> VMWrapper {
         let (etx, erx) = channel();
 
         // Have an uninitialized VM...
         let wvm = Rc::new(RefCell::new(VM {
             vm: std::ptr::null_mut(),
-            error_recv: erx,
-            module: std::marker::PhantomData
+            error_recv: erx
         }));
 
         let vm_config = Box::into_raw(Box::new(UserData {
@@ -801,7 +799,7 @@ impl<'a> VMConfig<'a> {
 }
 
 // TODO Expose more VM configuration (initalHeap, maxHeap, etc.)
-impl<'a> VM<'a> {
+impl VM {
     // Slot and Handle API
     pub fn ensure_slots(&self, count: usize) {
         unsafe {
@@ -986,7 +984,7 @@ impl<'a> VM<'a> {
 
         self.ensure_slots((slot + 1) as usize);
         // Even if slot == 0, we can just load the class into slot 0, then use wrenSetSlotNewForeign to "create" a new object
-        match conf.library.and_then(|lib| lib.get_foreign_class(module.as_ref(), class.as_ref())) {
+        match conf.library.as_ref().and_then(|lib| lib.get_foreign_class(module.as_ref(), class.as_ref())) {
             None => None, // Couldn't find the corresponding class
             Some(runtime_class) => {
                 if runtime_class.type_id == any::TypeId::of::<T>() {
@@ -1038,7 +1036,7 @@ impl<'a> VM<'a> {
     }
 }
 
-impl<'a> Drop for VM<'a> {
+impl Drop for VM {
     fn drop(&mut self) {
         unsafe {
             let conf = wren_sys::wrenGetUserData(self.vm);
