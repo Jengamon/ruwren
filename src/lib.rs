@@ -667,10 +667,6 @@ impl<'a> VMWrapper<'a> {
 
 // TODO Expose more VM configuration (initalHeap, maxHeap, etc.)
 impl<'a> VM<'a> {
-    pub fn new_terminal(library: Option<&ModuleLibrary>) -> VMWrapper {
-        VM::new(PrintlnPrinter, NullLoader, library)
-    }
-
     pub fn new<P: 'static + Printer, L: 'static + ModuleScriptLoader>(p: P, l: L, library: Option<&ModuleLibrary>) -> VMWrapper {
         let (etx, erx) = channel();
 
@@ -978,7 +974,7 @@ impl<'a> Drop for VM<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::{create_module, get_slot_checked};
+    use super::{create_module, get_slot_checked, PrintlnPrinter, NullLoader, VM};
 
     struct Point {
         x: f64,
@@ -1046,12 +1042,12 @@ mod tests {
 
     #[test]
     fn init_vm() {
-        let _ = super::VM::new_terminal(None);
+        let _ = VM::new(PrintlnPrinter, NullLoader, None);
     }
 
     #[test]
     fn test_small_wren_program() {
-        let vm = super::VM::new_terminal(None);
+        let vm = VM::new(PrintlnPrinter, NullLoader, None);
         let interp = vm.interpret("main", "System.print(\"I am running in a VM!\")");
         println!("{:?}", interp);
         assert!(interp.is_ok());
@@ -1059,7 +1055,7 @@ mod tests {
 
     #[test]
     fn test_small_wren_program_call() {
-        let vm = super::VM::new_terminal(None);
+        let vm = VM::new(PrintlnPrinter, NullLoader, None);
 
         let source = vm.interpret("main", r"
         class GameEngine {
@@ -1088,7 +1084,7 @@ mod tests {
     fn test_external_module() {
         let mut lib = super::ModuleLibrary::new();
         main::publish_module(&mut lib);
-        let vm = super::VM::new_terminal(Some(&lib));
+        let vm = VM::new(PrintlnPrinter, NullLoader, Some(&lib));
         let source = vm.interpret("main", "
         class Math {
             foreign static add5(a)
@@ -1161,7 +1157,7 @@ mod tests {
             }
         }
 
-        let vm = super::VM::new(super::PrintlnPrinter, TestLoader, None);
+        let vm = super::VM::new(PrintlnPrinter, TestLoader, None);
         let source = vm.interpret("main", "
         import \"math\" for Math
 
@@ -1193,7 +1189,7 @@ mod tests {
     fn foreign_instance() {
         let mut lib = super::ModuleLibrary::new();
         main::publish_module(&mut lib);
-        let vm = super::VM::new_terminal(Some(&lib));
+        let vm = VM::new(PrintlnPrinter, NullLoader, Some(&lib));
         let source = vm.interpret("main", "
         class Math {
             foreign static add5(a)
