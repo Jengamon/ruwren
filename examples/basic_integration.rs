@@ -1,4 +1,4 @@
-use ruwren::{VM, Class, PrintlnPrinter, NullLoader, ModuleLibrary, create_class_objects, SlotType, Executor};
+use ruwren::{VM, Class, PrintlnPrinter, NullLoader, ModuleLibrary, create_module, get_slot_checked, send_foreign, Executor};
 
 struct Vector {
     x: f64,
@@ -6,7 +6,7 @@ struct Vector {
 }
 
 impl Class for Vector {
-    fn initialize(vm: &VM) -> Self {
+    fn initialize(_: &VM) -> Self {
         panic!("Cannot initialize from Wren code");
     }
 }
@@ -24,21 +24,19 @@ impl Vector {
 
     fn set_x(&mut self, vm: &VM) {
         vm.ensure_slots(2);
-        if vm.get_slot_type(1) != SlotType::Num { panic!("x can only be set to <num>") }
-        self.x = vm.get_slot_double(1);
+        self.x = get_slot_checked!(vm => num 1);
     }
 
     fn set_y(&mut self, vm: &VM) {
         vm.ensure_slots(2);
-        if vm.get_slot_type(1) != SlotType::Num { panic!("y can only be set to <num>") }
-        self.y = vm.get_slot_double(1);
+        self.y = get_slot_checked!(vm => num 1);
     }
 }
 
 struct Math;
 
 impl Class for Math {
-    fn initialize(vm: &VM) -> Self {
+    fn initialize(_: &VM) -> Self {
         panic!("Math is a purely static class");
     }
 }
@@ -46,19 +44,13 @@ impl Class for Math {
 impl Math {
     fn new_vector(vm: &VM) {
         vm.ensure_slots(3);
-        if vm.get_slot_type(1) != SlotType::Num { panic!("a vector's x can only be <num>") }
-        if vm.get_slot_type(2) != SlotType::Num { panic!("a vector's y can only by <num>") }
-        let x = vm.get_slot_double(1);
-        let y = vm.get_slot_double(2);
-        if vm.set_slot_new_foreign("maths", "Vector", Vector {
-            x, y
-        }, 0).is_none() {
-            panic!("Unable to send vector")
-        }
+        let x = get_slot_checked!(vm => num 1);
+        let y = get_slot_checked!(vm => num 2);
+        send_foreign!(vm, "maths", "Vector", Vector { x, y } => 0);
     }
 }
 
-create_class_objects!(
+create_module!(
     class("Vector") crate::Vector => vector {
         instance("x()") x,
         instance("y()") y,

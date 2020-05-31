@@ -260,7 +260,7 @@ pub struct ForeignObject<T> {
 /// 
 /// Also internally creates all the necessary extern "C" functions for Wren's callbacks
 #[macro_export]
-macro_rules! create_class_objects {
+macro_rules! create_module {
     (
         $(
             class($mname:expr) $name:ty => $md:ident {
@@ -324,11 +324,11 @@ macro_rules! create_class_objects {
                 }
 
                 $(
-                    $crate::create_class_objects!(@fn static $name => $sf);
+                    $crate::create_module!(@fn static $name => $sf);
                 )*
 
                 $(
-                    $crate::create_class_objects!(@fn instance $name => $inf);
+                    $crate::create_module!(@fn instance $name => $inf);
                 )*
             }
 
@@ -426,6 +426,54 @@ macro_rules! create_class_objects {
                 }
             };
             drop(take_hook());
+        }
+    }
+}
+
+/// Checks if the slot type is correct at the given slot.
+/// If not, will panic.
+/// If it is, will return the item at the given slot.
+#[macro_export]
+macro_rules! get_slot_checked {
+    ($vm:expr => num $slot:expr) => {
+        {
+            if $vm.get_slot_type($slot) != $crate::SlotType::Num { panic!("rust error [{}:{}]: Slot {} is not a <num>", file!(), line!(), $slot) }
+            $vm.get_slot_double($slot)
+        }
+    };
+
+    ($vm:expr => bool $slot:expr) => {
+        {
+            if $vm.get_slot_type($slot) != $crate::SlotType::Bool { panic!("rust error [{}:{}]: Slot {} is not a <bool>", file!(), line!(), $slot) }
+            $vm.get_slot_bool($slot)
+        }
+    };
+
+    ($vm:expr => string $slot:expr) => {
+        {
+            if $vm.get_slot_type($slot) != $crate::SlotType::String { panic!("rust error [{}:{}]: Slot {} is not a <string>", file!(), line!(), $slot) }
+            $vm.get_slot_string($slot)
+        }
+    };
+
+    ($vm:expr => bytes $slot:expr) => {
+        {
+            if $vm.get_slot_type($slot) != $crate::SlotType::String { panic!("rust error [{}:{}]: Slot {} is not a <string>", file!(), line!(), $slot) }
+            $vm.get_slot_bytes($slot)
+        }
+    };
+}
+
+/// Sends a foreign object [$obj] as an object of [$class] in module [$modl] to slot [$slot]
+#[macro_export]
+macro_rules! send_foreign {
+    ($vm:expr, $modl:expr, $class:expr, $obj:expr => $slot:expr) => {
+        {
+            use std::any::Any;
+
+            if !$vm.set_slot_new_foreign($modl, $class, $obj, $slot).is_none() {
+                panic!("rust error [{}:{}]: Could not send type {:?} as [{}] {}", file!(), line!(), $obj.type_id(), $modl, $class);
+            }
         }
     }
 }
@@ -723,6 +771,17 @@ impl<'a> VM<'a> {
         }
     }
 
+    pub fn get_list_element(&self, list_slot: i32, index: i32, element_slot: i32) {
+        unsafe {
+            wren_sys::wrenGetListElement(
+                self.vm, 
+                list_slot as raw::c_int,
+                index as raw::c_int,
+                element_slot as raw::c_int
+            )
+        }
+    }
+
     pub fn get_slot_handle(&self, slot: i32) -> Handle {
         Handle {
             handle: unsafe {
@@ -831,7 +890,7 @@ impl<'a> Drop for VM<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Executor, create_class_objects};
+    use super::{Executor, create_module};
 
     struct Point {
         x: f64,
@@ -887,7 +946,7 @@ mod tests {
         }
     }
 
-    create_class_objects! {
+    create_module! {
         class("RawPoint") crate::tests::Point => point {
             instance("x()") x,
             instance("set_x(_)") set_x
