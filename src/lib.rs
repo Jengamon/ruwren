@@ -195,7 +195,10 @@ impl ModuleLibrary {
 struct RuntimeClass {
     construct: extern "C" fn(*mut WrenVM),
     destruct: extern "C" fn(*mut ffi::c_void),
-    methods: ClassObjectPointers
+    methods: ClassObjectPointers,
+
+    // Use for "loading in" appropriate objects
+    type_id: any::TypeId,
 }
 
 #[derive(Debug)]
@@ -222,14 +225,15 @@ impl Module {
         }
     }
 
-    pub fn class<C: ClassObject, S: AsRef<str>>(&mut self, name: S) -> &mut Self {
+    pub fn class<C: 'static + ClassObject, S: AsRef<str>>(&mut self, name: S) -> &mut Self {
         let cp = C::generate_pointers();
         let init = C::initialize_pointer();
         let deinit = C::finalize_pointer();
         self.classes.insert(name.as_ref().to_string(), RuntimeClass {
             construct: init,
             destruct: deinit,
-            methods: cp
+            methods: cp,
+            type_id: any::TypeId::of::<C>(),
         });
         self
     }
@@ -238,10 +242,6 @@ impl Module {
 // Trait that all Wren "class" objects implement
 pub trait Class {
     fn initialize(_: &VM) -> Self;
-}
-
-trait FuncReferent {
-    fn refer(&self) -> extern "C" fn(*mut WrenVM);
 }
 
 pub trait ClassObject: Class {
@@ -255,18 +255,26 @@ struct ForeignObject<T> {
     type_id: any::TypeId,
 }
 
+/// Creates a function at $modl::publish_module, that takes a &mut ModuleLibrary
+/// and handles Module object creation and registration
+/// 
+/// Also internally creates all the necessary extern "C" functions for Wren's callbacks
 #[macro_export]
 macro_rules! create_class_objects {
-    ($(
-        class $name:ty => $md:ident {
-            $(
-                static($sgns:expr) $sf:ident 
-            ),*
-            $(
-                instance($sgni:expr) $inf:ident
-            ),*
-        }
-    )+) => {
+    (
+        $(
+            class($mname:expr) $name:ty => $md:ident {
+                $(
+                    static($sgns:expr) $sf:ident 
+                ),*
+                $(
+                    instance($sgni:expr) $inf:ident
+                ),*
+            }
+        )+
+
+        module => $modl:ident
+    ) => {
         $(
             mod $md {
                 use std::panic::{take_hook, set_hook, catch_unwind, AssertUnwindSafe};
@@ -349,6 +357,17 @@ macro_rules! create_class_objects {
                 }
             }
         )+
+
+        mod $modl {
+            pub fn publish_module(lib: &mut $crate::ModuleLibrary) {
+                let mut module = $crate::Module::new();
+                module
+                $(
+                    .class::<$name, _>($mname)
+                )+;
+                lib.module(stringify!($modl), module);
+            }
+        }
     };
 
     (@fn static $name:ty => $s:ident) => {
@@ -714,11 +733,11 @@ impl<'a> VM<'a> {
         }
     }
 
-    pub fn get_slot_foreign<T: 'static>(&self, slot: i32) -> Option<&T> {
+    pub fn get_slot_foreign<T: 'static + ClassObject>(&self, slot: i32) -> Option<&T> {
         self.get_slot_foreign_mut(slot).map(|mr| &*mr)
     }
 
-    pub fn get_slot_foreign_mut<T: 'static>(&self, slot: i32) -> Option<&mut T> {
+    pub fn get_slot_foreign_mut<T: 'static + ClassObject>(&self, slot: i32) -> Option<&mut T> {
         unsafe {
             let ptr = wren_sys::wrenGetSlotForeign(self.vm, slot as raw::c_int);
             if ptr != std::ptr::null_mut() {
@@ -732,6 +751,48 @@ impl<'a> VM<'a> {
                 }
             } else {
                 None
+            }
+        }
+    }
+
+    /// Looks up the specifed [module] for the specified [class]
+    /// If it's type matches with type T, will create a new instance in [slot]
+    /// WARNING: This *will* overwrite slot 0, so be careful.
+    pub fn set_slot_new_foreign<M: AsRef<str>, C: AsRef<str>, T: 'static + ClassObject>(&self, module: M, class: C, object: T, slot: i32) -> Option<&mut T> {
+        let conf = unsafe { &mut *(wren_sys::wrenGetUserData(self.vm) as *mut UserData) };
+
+        self.ensure_slots((slot + 1) as usize);
+        // Even if slot == 0, we can just load the class into slot 0, then use wrenSetSlotNewForeign to "create" a new object
+        match conf.library.and_then(|lib| lib.get_foreign_class(module.as_ref(), class.as_ref())) {
+            None => None, // Couldn't find the corresponding class
+            Some(runtime_class) => {
+                if runtime_class.type_id == any::TypeId::of::<T>() {
+                    // The Wren foreign class corresponds with this real object.
+                    // We can coerce it and treat this object as that class, even if not instantiated by Wren.
+
+                    // Create the new ForeignObject
+                    let new_obj = Box::new(ForeignObject {
+                        object: Box::into_raw(Box::new(object)),
+                        type_id: any::TypeId::of::<T>(),
+                    });
+
+                    // Load the Wren class object into slot 0.
+                    self.get_variable(module, class, 0);
+
+                    unsafe {
+                        // Create the Wren foreign pointer
+                        let wptr = wren_sys::wrenSetSlotNewForeign(self.vm, slot as raw::c_int, 0, mem::size_of::<ForeignObject<T>>() as wren_sys::size_t);
+                        
+                        // Move the ForeignObject into the pointer
+                        std::ptr::copy_nonoverlapping(Box::leak(new_obj), wptr as *mut _, 1);
+
+                        // Reinterpret the pointer as an object if we were successful
+                        (wptr as *mut T).as_mut()
+                    }
+                } else {
+                    // The classes do not match. Avoid.
+                    None
+                }
             }
         }
     }
@@ -811,18 +872,30 @@ mod tests {
             let i = vm.get_slot_double(1);
             vm.set_slot_double(0, i + 5.0);
         }
+
+        fn pointy(vm: &super::VM) {
+            vm.ensure_slots(2);
+            let send = vm.set_slot_new_foreign("main", "RawPoint", Point {
+                x: 345.7
+            }, 0);
+            if send.is_none() {
+                panic!("Could not send RawPoint object");
+            }
+        }
     }
 
-    // Why does this require the fully qualified paths? IDK...
     create_class_objects! {
-        class crate::tests::Point => point {
+        class("RawPoint") crate::tests::Point => point {
             instance("x()") x,
             instance("set_x(_)") set_x
         }
 
-        class crate::tests::Math => math {
-            static("add5(_)") add5
+        class("Math") crate::tests::Math => math {
+            static("add5(_)") add5,
+            static("pointy()") pointy
         }
+
+        module => main
     }
 
     #[test]
@@ -872,11 +945,7 @@ mod tests {
     #[test]
     fn test_external_module() {
         let mut lib = super::ModuleLibrary::new();
-        let mut module = super::Module::new();
-        module
-            .class::<Math, _>("Math")
-            .class::<Point, _>("RawPoint");
-        lib.module("main", module);
+        main::publish_module(&mut lib);
         let vm = super::VM::new_terminal(Some(&lib));
         vm.execute(|vm| {
             let source = vm.interpret("main", "
@@ -973,6 +1042,54 @@ mod tests {
             vm.set_slot_double(1, 32.2);
             let update_handle = vm.make_call_handle("update(_)");
             let interp = vm.call(&update_handle);
+            assert!(interp.is_ok());
+            assert_eq!(vm.get_slot_type(0), super::SlotType::Num);
+            assert_eq!(vm.get_slot_double(0), 21.45);
+        });
+    }
+
+    #[test]
+    fn foreign_instance() {
+        let mut lib = super::ModuleLibrary::new();
+        main::publish_module(&mut lib);
+        let vm = super::VM::new_terminal(Some(&lib));
+        vm.execute(|vm| {
+            let source = vm.interpret("main", "
+            class Math {
+                foreign static add5(a)
+                foreign static pointy()
+            }
+
+            foreign class RawPoint {
+                construct new(x) {}
+
+                foreign x()
+                foreign set_x(val)
+            }
+
+            class GameEngine {
+                static update(elapsedTime) {
+                    System.print(elapsedTime)
+                    var p = Math.pointy()
+                    System.print(p.x())
+                    return Math.add5(16.45)
+                }
+            }
+            ");
+            println!("{:?}", source);
+            assert!(source.is_ok());
+        });
+
+        vm.execute(|vm| {
+            vm.ensure_slots(2);
+            vm.get_variable("main", "GameEngine", 0);
+            let _ = vm.get_slot_handle(0);
+            vm.set_slot_double(1, 32.2);
+            let update_handle = vm.make_call_handle("update(_)");
+            let interp = vm.call(&update_handle);
+            if let Err(e) = interp.clone() {
+                eprintln!("{}", e);
+            }
             assert!(interp.is_ok());
             assert_eq!(vm.get_slot_type(0), super::SlotType::Num);
             assert_eq!(vm.get_slot_double(0), 21.45);
