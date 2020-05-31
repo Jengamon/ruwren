@@ -413,7 +413,7 @@ pub trait ModuleScriptLoader {
 
 pub type EVM<'a> = Rc<RefCell<VM<'a>>>;
 
-trait Executor {
+pub trait Executor {
     fn execute<F>(&self, function: F) where F: FnMut(&VM);
 }
 
