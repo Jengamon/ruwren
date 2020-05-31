@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 use std::cell::RefCell;
 
-use std::{mem, ffi, os::raw, any};
+use std::{mem, ffi, os::raw, any, marker};
 
 #[derive(Debug)]
 pub enum WrenError {
@@ -156,15 +156,18 @@ impl std::fmt::Display for VMError {
 
 impl std::error::Error for VMError {}
 
+/// A handle to a Wren object
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Handle<'a> {
     handle: *mut WrenHandle,
-    vm: &'a VM<'a>
+    wvm: *mut WrenVM,
+    vm: marker::PhantomData<&'a VM<'a>>
 }
 
 impl<'a> Drop for Handle<'a> {
     fn drop(&mut self) {
         unsafe {
-            wren_sys::wrenReleaseHandle(self.vm.vm, self.handle);
+            wren_sys::wrenReleaseHandle(self.wvm, self.handle);
         }
     }
 }
@@ -518,6 +521,7 @@ impl ModuleScriptLoader for NullLoader {
     fn load_script(&mut self, _: String) -> Option<String> { None }
 }
 
+#[derive(Debug)]
 pub struct VM<'l> {
     pub vm: *mut WrenVM,
     error_recv: Receiver<WrenError>,
@@ -866,13 +870,14 @@ impl<'a> VM<'a> {
         }
     }
 
-    pub fn get_slot_handle(&self, slot: SlotId) -> Handle {
-        Handle {
+    pub fn get_slot_handle(&self, slot: SlotId) -> Rc<Handle> {
+        Rc::new(Handle {
             handle: unsafe {
                 wren_sys::wrenGetSlotHandle(self.vm, slot as raw::c_int)
             },
-            vm: self
-        }
+            wvm: self.vm,
+            vm: marker::PhantomData
+        })
     }
 
     pub fn set_slot_handle(&self, slot: SlotId, handle: &Handle) {
@@ -945,14 +950,15 @@ impl<'a> VM<'a> {
         }
     }
 
-    fn make_call_handle(&self, signature: FunctionSignature) -> Handle {
+    fn make_call_handle(&self, signature: FunctionSignature) -> Rc<Handle> {
         let signature = ffi::CString::new(signature.as_wren_string()).expect("signature conversion failed");
-        Handle {
+        Rc::new(Handle {
             handle: unsafe {
                 wren_sys::wrenMakeCallHandle(self.vm, signature.as_ptr())
             },
-            vm: self
-        }
+            wvm: self.vm,
+            vm: marker::PhantomData
+        })
     }
 
     pub fn abort_fiber(&self, slot: SlotId) {
