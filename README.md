@@ -1,4 +1,4 @@
-# Ruwren: Wren bindings for Rust
+# Ruwren: Wren bindings for Rust ![badge](https://docs.rs/ruwren/badge.svg)
 
 Here is an attempt at making some Rust Wren bindings in a more Rust style.
 It act pretty low-level still (you do have to deal with the slot / foreign API), but should be 
