@@ -502,16 +502,6 @@ pub trait ModuleScriptLoader {
 
 pub type EVM<'a> = Rc<RefCell<VM<'a>>>;
 
-pub trait Executor {
-    fn execute<F>(&self, function: F) where F: FnMut(&VM);
-}
-
-impl<'a> Executor for EVM<'a> {
-    fn execute<F>(&self, mut function: F) where F: FnMut(&VM) {
-        function(&*self.borrow())
-    }
-}
-
 pub trait Printer {
     fn print(&mut self, s: String);
 }
@@ -607,13 +597,81 @@ impl FunctionSignature {
     }
 }
 
+pub struct VMWrapper<'a>(EVM<'a>);
+
+impl<'a> VMWrapper<'a> {
+    pub fn call(&self, signature: FunctionSignature) -> Result<(), VMError> {
+        let vm = self.0.borrow();
+        let handle = vm.make_call_handle(signature);
+        match unsafe { wren_sys::wrenCall(vm.vm, handle.handle) } {
+            wren_sys::WrenInterpretResult_WREN_RESULT_SUCCESS => Ok(()),
+            wren_sys::WrenInterpretResult_WREN_RESULT_COMPILE_ERROR => unreachable!("wrenCall doesn't compile anything"),
+            wren_sys::WrenInterpretResult_WREN_RESULT_RUNTIME_ERROR => {
+                let mut error = "".to_string();
+                let mut frames = vec![];
+                while let Ok(err) = vm.error_recv.try_recv() {
+                    match err {
+                        WrenError::Runtime(msg) => {error = msg; },
+                        WrenError::StackTrace(module, line, msg) => {frames.push(VMStackFrameError {
+                            module, line, function: msg
+                        }); },
+                        _ => unreachable!()
+                    }
+                }
+                Err(VMError::Runtime{
+                    error,
+                    frames
+                })
+            },
+            _ => unreachable!()
+        }
+    }
+
+    pub fn interpret<M: AsRef<str>, C: AsRef<str>>(&self, module: M, code: C) -> Result<(), VMError> {
+        let module = ffi::CString::new(module.as_ref()).expect("module name conversion failed");
+        let code = ffi::CString::new(code.as_ref()).expect("code conversion failed");
+        let vm = self.0.borrow();
+        match unsafe { wren_sys::wrenInterpret(vm.vm, module.as_ptr() as *const i8, code.as_ptr() as *const i8) } {
+            wren_sys::WrenInterpretResult_WREN_RESULT_SUCCESS => Ok(()),
+            wren_sys::WrenInterpretResult_WREN_RESULT_COMPILE_ERROR => match vm.error_recv.try_recv() {
+                Ok(WrenError::Compile(module, line, msg)) => {
+                    Err(VMError::Compile { module, line, error: msg })
+                }
+                _ => unreachable!()
+            },
+            wren_sys::WrenInterpretResult_WREN_RESULT_RUNTIME_ERROR => {
+                let mut error = "".to_string();
+                let mut frames = vec![];
+                while let Ok(err) = vm.error_recv.try_recv() {
+                    match err {
+                        WrenError::Runtime(msg) => {error = msg; },
+                        WrenError::StackTrace(module, line, msg) => {frames.push(VMStackFrameError {
+                            module, line, function: msg
+                        }); },
+                        _ => unreachable!()
+                    }
+                }
+                Err(VMError::Runtime{
+                    error,
+                    frames
+                })
+            },
+            _ => unreachable!()
+        }
+    }
+
+    pub fn execute<F>(&self, mut f: F) where F: FnMut(&VM) {
+        f(&self.0.borrow())
+    }
+}
+
 // TODO Expose more VM configuration (initalHeap, maxHeap, etc.)
 impl<'a> VM<'a> {
-    pub fn new_terminal(library: Option<&ModuleLibrary>) -> EVM {
+    pub fn new_terminal(library: Option<&ModuleLibrary>) -> VMWrapper {
         VM::new(PrintlnPrinter, NullLoader, library)
     }
 
-    pub fn new<P: 'static + Printer, L: 'static + ModuleScriptLoader>(p: P, l: L, library: Option<&ModuleLibrary>) -> EVM {
+    pub fn new<P: 'static + Printer, L: 'static + ModuleScriptLoader>(p: P, l: L, library: Option<&ModuleLibrary>) -> VMWrapper {
         let (etx, erx) = channel();
 
         // Have an uninitialized VM...
@@ -648,64 +706,7 @@ impl<'a> VM<'a> {
 
         let vm = unsafe { wren_sys::wrenNewVM(&mut config) };
         wvm.borrow_mut().vm = vm;
-        wvm
-    }
-
-    pub fn call(&self, handle: &Handle) -> Result<(), VMError> {
-        match unsafe { wren_sys::wrenCall(self.vm, handle.handle) } {
-            wren_sys::WrenInterpretResult_WREN_RESULT_SUCCESS => Ok(()),
-            wren_sys::WrenInterpretResult_WREN_RESULT_COMPILE_ERROR => unreachable!("wrenCall doesn't compile anything"),
-            wren_sys::WrenInterpretResult_WREN_RESULT_RUNTIME_ERROR => {
-                let mut error = "".to_string();
-                let mut frames = vec![];
-                while let Ok(err) = self.error_recv.try_recv() {
-                    match err {
-                        WrenError::Runtime(msg) => {error = msg; },
-                        WrenError::StackTrace(module, line, msg) => {frames.push(VMStackFrameError {
-                            module, line, function: msg
-                        }); },
-                        _ => unreachable!()
-                    }
-                }
-                Err(VMError::Runtime{
-                    error,
-                    frames
-                })
-            },
-            _ => unreachable!()
-        }
-    }
-
-    pub fn interpret<M: AsRef<str>, C: AsRef<str>>(&self, module: M, code: C) -> Result<(), VMError> {
-        let module = ffi::CString::new(module.as_ref()).expect("module name conversion failed");
-        let code = ffi::CString::new(code.as_ref()).expect("code conversion failed");
-        match unsafe { wren_sys::wrenInterpret(self.vm, module.as_ptr() as *const i8, code.as_ptr() as *const i8) } {
-            wren_sys::WrenInterpretResult_WREN_RESULT_SUCCESS => Ok(()),
-            wren_sys::WrenInterpretResult_WREN_RESULT_COMPILE_ERROR => match self.error_recv.try_recv() {
-                Ok(WrenError::Compile(module, line, msg)) => {
-                    Err(VMError::Compile { module, line, error: msg })
-                }
-                _ => unreachable!()
-            },
-            wren_sys::WrenInterpretResult_WREN_RESULT_RUNTIME_ERROR => {
-                let mut error = "".to_string();
-                let mut frames = vec![];
-                while let Ok(err) = self.error_recv.try_recv() {
-                    match err {
-                        WrenError::Runtime(msg) => {error = msg; },
-                        WrenError::StackTrace(module, line, msg) => {frames.push(VMStackFrameError {
-                            module, line, function: msg
-                        }); },
-                        _ => unreachable!()
-                    }
-                }
-                Err(VMError::Runtime{
-                    error,
-                    frames
-                })
-            },
-            _ => unreachable!()
-        }
+        VMWrapper(wvm)
     }
 
     // manual GC trigger
@@ -948,7 +949,7 @@ impl<'a> VM<'a> {
         }
     }
 
-    pub fn make_call_handle(&self, signature: FunctionSignature) -> Handle {
+    fn make_call_handle(&self, signature: FunctionSignature) -> Handle {
         let signature = ffi::CString::new(signature.as_wren_string()).expect("signature conversion failed");
         Handle {
             handle: unsafe {
@@ -977,7 +978,7 @@ impl<'a> Drop for VM<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Executor, create_module, get_slot_checked};
+    use super::{create_module, get_slot_checked};
 
     struct Point {
         x: f64,
@@ -1051,37 +1052,33 @@ mod tests {
     #[test]
     fn test_small_wren_program() {
         let vm = super::VM::new_terminal(None);
-        vm.execute(|vm| {
-            let interp = vm.interpret("main", "System.print(\"I am running in a VM!\")");
-            println!("{:?}", interp);
-            assert!(interp.is_ok());
-        });
+        let interp = vm.interpret("main", "System.print(\"I am running in a VM!\")");
+        println!("{:?}", interp);
+        assert!(interp.is_ok());
     }
 
     #[test]
     fn test_small_wren_program_call() {
         let vm = super::VM::new_terminal(None);
 
-        vm.execute(|vm| {
-            let source = vm.interpret("main", r"
-            class GameEngine {
-                static update(elapsedTime) {
-                    System.print(elapsedTime)
-                    return 16.45
-                }
+        let source = vm.interpret("main", r"
+        class GameEngine {
+            static update(elapsedTime) {
+                System.print(elapsedTime)
+                return 16.45
             }
-            ");
-            assert!(source.is_ok());
-        });
+        }
+        ");
+        assert!(source.is_ok());
 
         vm.execute(|vm| {
             vm.ensure_slots(2);
             vm.get_variable("main", "GameEngine", 0);
-            let _ = vm.get_slot_handle(0);
             vm.set_slot_double(1, 32.2);
-            let update_handle = vm.make_call_handle(super::FunctionSignature::new_function("update", 1));
-            let interp = vm.call(&update_handle);
-            assert!(interp.is_ok());
+        });
+        let interp = vm.call(super::FunctionSignature::new_function("update", 1));
+        assert!(interp.is_ok());
+        vm.execute(|vm| {
             assert_eq!(vm.get_slot_type(0), super::SlotType::Num);
             assert_eq!(vm.get_slot_double(0), Some(16.45));
         });
@@ -1092,57 +1089,56 @@ mod tests {
         let mut lib = super::ModuleLibrary::new();
         main::publish_module(&mut lib);
         let vm = super::VM::new_terminal(Some(&lib));
-        vm.execute(|vm| {
-            let source = vm.interpret("main", "
-            class Math {
-                foreign static add5(a)
+        let source = vm.interpret("main", "
+        class Math {
+            foreign static add5(a)
+        }
+
+        foreign class RawPoint {
+            construct new(x) {}
+
+            foreign x()
+            foreign set_x(val)
+        }
+
+        class Point {
+            construct new(x) {
+                _rp = RawPoint.new(x)
             }
 
-            foreign class RawPoint {
-                construct new(x) {}
+            x { _rp.x() }
+            x=(val) { _rp.set_x(val) }
+        }
 
-                foreign x()
-                foreign set_x(val)
+        class GameEngine {
+            static update(elapsedTime) {
+                System.print(elapsedTime)
+                var p = Point.new(3)
+                System.print(p.x)
+                p.x = 10
+                System.print(p.x)
+                return Math.add5(16.45)
             }
-
-            class Point {
-                construct new(x) {
-                    _rp = RawPoint.new(x)
-                }
-
-                x { _rp.x() }
-                x=(val) { _rp.set_x(val) }
-            }
-
-            class GameEngine {
-                static update(elapsedTime) {
-                    System.print(elapsedTime)
-                    var p = Point.new(3)
-                    System.print(p.x)
-                    p.x = 10
-                    System.print(p.x)
-                    return Math.add5(16.45)
-                }
-            }
-            ");
-            println!("{:?}", source);
-            assert!(source.is_ok());
-        });
+        }
+        ");
+        println!("{:?}", source);
+        assert!(source.is_ok());
 
         vm.execute(|vm| {
             vm.ensure_slots(2);
             vm.get_variable("main", "GameEngine", 0);
             let _ = vm.get_slot_handle(0);
             vm.set_slot_double(1, 32.2);
-            let update_handle = vm.make_call_handle(super::FunctionSignature::new_function("update", 1));
-            let interp = vm.call(&update_handle);
-            if let Err(e) = interp.clone() {
-                eprintln!("{}", e);
-            }
-            assert!(interp.is_ok());
+        });
+        let interp = vm.call(super::FunctionSignature::new_function("update", 1));
+        if let Err(e) = interp.clone() {
+            eprintln!("{}", e);
+        }
+        assert!(interp.is_ok());
+        vm.execute(|vm| {
             assert_eq!(vm.get_slot_type(0), super::SlotType::Num);
             assert_eq!(vm.get_slot_double(0), Some(21.45));
-        });
+        })
     }
 
     #[test]
@@ -1166,31 +1162,31 @@ mod tests {
         }
 
         let vm = super::VM::new(super::PrintlnPrinter, TestLoader, None);
-        vm.execute(|vm| {
-            let source = vm.interpret("main", "
-            import \"math\" for Math
+        let source = vm.interpret("main", "
+        import \"math\" for Math
 
-            class GameEngine {
-                static update(elapsedTime) {
-                    System.print(elapsedTime)
-                    return Math.add5(16.45)
-                }
+        class GameEngine {
+            static update(elapsedTime) {
+                System.print(elapsedTime)
+                return Math.add5(16.45)
             }
-            ");
-            assert!(source.is_ok());
-        });
+        }
+        ");
+        assert!(source.is_ok());
 
         vm.execute(|vm| {
             vm.ensure_slots(2);
             vm.get_variable("main", "GameEngine", 0);
             let _ = vm.get_slot_handle(0);
             vm.set_slot_double(1, 32.2);
-            let update_handle = vm.make_call_handle(super::FunctionSignature::new_function("update", 1));
-            let interp = vm.call(&update_handle);
-            assert!(interp.is_ok());
+        });
+        let interp = vm.call(super::FunctionSignature::new_function("update", 1));
+        assert!(interp.is_ok());
+        vm.execute(|vm| {
             assert_eq!(vm.get_slot_type(0), super::SlotType::Num);
             assert_eq!(vm.get_slot_double(0), Some(21.45));
         });
+
     }
 
     #[test]
@@ -1198,44 +1194,44 @@ mod tests {
         let mut lib = super::ModuleLibrary::new();
         main::publish_module(&mut lib);
         let vm = super::VM::new_terminal(Some(&lib));
-        vm.execute(|vm| {
-            let source = vm.interpret("main", "
-            class Math {
-                foreign static add5(a)
-                foreign static pointy()
-            }
+        let source = vm.interpret("main", "
+        class Math {
+            foreign static add5(a)
+            foreign static pointy()
+        }
 
-            foreign class RawPoint {
-                construct new(x) {}
+        foreign class RawPoint {
+            construct new(x) {}
 
-                foreign x()
-                foreign set_x(val)
-            }
+            foreign x()
+            foreign set_x(val)
+        }
 
-            class GameEngine {
-                static update(elapsedTime) {
-                    System.print(elapsedTime)
-                    var p = Math.pointy()
-                    System.print(p.x())
-                    return Math.add5(16.45)
-                }
+        class GameEngine {
+            static update(elapsedTime) {
+                System.print(elapsedTime)
+                var p = Math.pointy()
+                System.print(p.x())
+                return Math.add5(16.45)
             }
-            ");
-            println!("{:?}", source);
-            assert!(source.is_ok());
-        });
+        }
+        ");
+        println!("{:?}", source);
+        assert!(source.is_ok());
 
         vm.execute(|vm| {
             vm.ensure_slots(2);
             vm.get_variable("main", "GameEngine", 0);
             let _ = vm.get_slot_handle(0);
             vm.set_slot_double(1, 32.2);
-            let update_handle = vm.make_call_handle(super::FunctionSignature::new_function("update", 1));
-            let interp = vm.call(&update_handle);
-            if let Err(e) = interp.clone() {
-                eprintln!("{}", e);
-            }
-            assert!(interp.is_ok());
+        });
+
+        let interp = vm.call(super::FunctionSignature::new_function("update", 1));
+        if let Err(e) = interp.clone() {
+            eprintln!("{}", e);
+        }
+        assert!(interp.is_ok());
+        vm.execute(|vm| {
             assert_eq!(vm.get_slot_type(0), super::SlotType::Num);
             assert_eq!(vm.get_slot_double(0), Some(21.45));
         });

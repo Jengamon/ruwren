@@ -1,4 +1,4 @@
-use ruwren::{VM, Class, PrintlnPrinter, NullLoader, ModuleLibrary, create_module, get_slot_checked, send_foreign, Executor};
+use ruwren::{VM, Class, PrintlnPrinter, NullLoader, ModuleLibrary, create_module, get_slot_checked, send_foreign};
 
 struct Vector {
     x: f64,
@@ -66,49 +66,17 @@ create_module!(
     module => maths
 );
 
-static MATHS_MODULE_SRC: &'static str = "
-foreign class Vector {
-    construct invalid() {}
-    foreign x=(x)
-    foreign y=(y)
-
-    foreign x
-    foreign y
-}
-
-class Math {
-    foreign static new_vector(x, y)
-}
-";
+static MATHS_MODULE_SRC: &'static str = include_str!("maths.wren");
 
 fn main() {
     let mut lib = ModuleLibrary::new();
     maths::publish_module(&mut lib);
     let vm = VM::new(PrintlnPrinter, NullLoader, Some(&lib));
-    vm.execute(|vm| {
-        vm.interpret("maths", MATHS_MODULE_SRC).unwrap(); // Should succeed
-    });
+    vm.interpret("maths", MATHS_MODULE_SRC).unwrap(); // Should succeed
 
-    vm.execute(|vm| {
-        let res = vm.interpret("main", "
-        import \"maths\" for Math, Vector
-        var poke_vector = Fiber.new {
-            Vector.invalid()
-        }
-        System.print(\"Hello World\")
-        System.print(poke_vector.try())
-        var vector = Math.new_vector(3, 4)
-        System.print(vector)
-        System.print(vector.x)
-        System.print(vector.y)
-        vector.x = (10.2)
-        vector.y = (vector.x * 2)
-        System.print(vector.x)
-        System.print(vector.y)
-        ");
+    let res = vm.interpret("main", include_str!("basic_integration.wren"));
 
-        if let Err(err) = res {
-            eprintln!("{}", err);
-        }
-    })
+    if let Err(err) = res {
+        eprintln!("{}", err);
+    }
 }
