@@ -208,14 +208,14 @@ pub struct Module {
 
 #[derive(Debug)]
 pub struct ClassObjectPointers {
-    function_pointers: Vec<MethodPointer>,
+    pub function_pointers: Vec<MethodPointer>,
 }
 
 #[derive(Debug)]
-struct MethodPointer {
-    is_static: bool,
-    signature: String,
-    pointer: unsafe extern "C" fn(*mut WrenVM),
+pub struct MethodPointer {
+    pub is_static: bool,
+    pub signature: String,
+    pub pointer: unsafe extern "C" fn(*mut WrenVM),
 }
 
 impl Module {
@@ -250,9 +250,9 @@ pub trait ClassObject: Class {
     fn generate_pointers() -> ClassObjectPointers;
 }
 
-struct ForeignObject<T> {
-    object: *mut T,
-    type_id: any::TypeId,
+pub struct ForeignObject<T> {
+    pub object: *mut T,
+    pub type_id: any::TypeId,
 }
 
 /// Creates a function at $modl::publish_module, that takes a &mut ModuleLibrary
@@ -278,7 +278,7 @@ macro_rules! create_class_objects {
         $(
             mod $md {
                 use std::panic::{take_hook, set_hook, catch_unwind, AssertUnwindSafe};
-                pub(in super) extern "C" fn _constructor(vm: *mut $crate::WrenVM) {
+                pub(in super) extern "C" fn _constructor(vm: *mut wren_sys::WrenVM) {
                     use $crate::Class;
                     unsafe {
                         let conf = &mut *(wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
@@ -324,11 +324,11 @@ macro_rules! create_class_objects {
                 }
 
                 $(
-                    create_class_objects!(@fn static $name => $sf);
+                    $crate::create_class_objects!(@fn static $name => $sf);
                 )*
 
                 $(
-                    create_class_objects!(@fn instance $name => $inf);
+                    $crate::create_class_objects!(@fn instance $name => $inf);
                 )*
             }
 
@@ -459,16 +459,16 @@ impl ModuleScriptLoader for NullLoader {
 }
 
 pub struct VM<'l> {
-    vm: *mut WrenVM,
+    pub vm: *mut WrenVM,
     error_recv: Receiver<WrenError>,
     module: std::marker::PhantomData<&'l ModuleLibrary>
 }
 
-struct UserData<'a> {
+/// A mostly internal class that is exposed so that some externally generated code can access it.
+pub struct UserData<'a> {
     error_channel: Sender<WrenError>,
     printer: Box<dyn Printer>,
-    #[allow(dead_code)] 
-    vm: Weak<RefCell<VM<'a>>>, // is used a *lot* by generated code.
+    pub vm: Weak<RefCell<VM<'a>>>, // is used a *lot* by externally generated code.
     library: Option<&'a ModuleLibrary>,
     loader: Box<dyn ModuleScriptLoader>,
 }
