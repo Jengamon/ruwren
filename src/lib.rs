@@ -542,6 +542,41 @@ pub enum SlotType {
 
 pub type SlotId = usize;
 
+#[derive(Debug, Clone)]
+pub enum FunctionSignature {
+    Function {
+        name: String,
+        arity: usize
+    },
+    Getter(String),
+    Setter(String),
+}
+
+impl FunctionSignature {
+    pub fn new_function<N: AsRef<str>>(name: N, arity: usize) -> FunctionSignature {
+        FunctionSignature::Function {
+            name: name.as_ref().to_string(),
+            arity
+        }
+    }
+
+    pub fn new_getter<N: AsRef<str>>(name: N) -> FunctionSignature {
+        FunctionSignature::Getter(name.as_ref().to_string())
+    }
+
+    pub fn new_setter<N: AsRef<str>>(name: N) -> FunctionSignature {
+        FunctionSignature::Setter(name.as_ref().to_string())
+    }
+
+    fn as_wren_string(&self) -> String {
+        match self {
+            FunctionSignature::Function { name, arity } => format!("{}({})", name, vec!["_".to_string(); *arity].join(",")),
+            FunctionSignature::Getter(name) => format!("{}", name),
+            FunctionSignature::Setter(name) => format!("{}=(_)", name),
+        }
+    }
+}
+
 // TODO Expose more VM configuration (initalHeap, maxHeap, etc.)
 impl<'a> VM<'a> {
     pub fn new_terminal(library: Option<&ModuleLibrary>) -> EVM {
@@ -883,8 +918,8 @@ impl<'a> VM<'a> {
         }
     }
 
-    pub fn make_call_handle<S: AsRef<str>>(&self, signature: S) -> Handle {
-        let signature = ffi::CString::new(signature.as_ref()).expect("signature conversion failed");
+    pub fn make_call_handle(&self, signature: FunctionSignature) -> Handle {
+        let signature = ffi::CString::new(signature.as_wren_string()).expect("signature conversion failed");
         Handle {
             handle: unsafe {
                 wren_sys::wrenMakeCallHandle(self.vm, signature.as_ptr())
@@ -1014,7 +1049,7 @@ mod tests {
             vm.get_variable("main", "GameEngine", 0);
             let _ = vm.get_slot_handle(0);
             vm.set_slot_double(1, 32.2);
-            let update_handle = vm.make_call_handle("update(_)");
+            let update_handle = vm.make_call_handle(super::FunctionSignature::new_function("update", 1));
             let interp = vm.call(&update_handle);
             assert!(interp.is_ok());
             assert_eq!(vm.get_slot_type(0), super::SlotType::Num);
@@ -1069,7 +1104,7 @@ mod tests {
             vm.get_variable("main", "GameEngine", 0);
             let _ = vm.get_slot_handle(0);
             vm.set_slot_double(1, 32.2);
-            let update_handle = vm.make_call_handle("update(_)");
+            let update_handle = vm.make_call_handle(super::FunctionSignature::new_function("update", 1));
             let interp = vm.call(&update_handle);
             if let Err(e) = interp.clone() {
                 eprintln!("{}", e);
@@ -1120,7 +1155,7 @@ mod tests {
             vm.get_variable("main", "GameEngine", 0);
             let _ = vm.get_slot_handle(0);
             vm.set_slot_double(1, 32.2);
-            let update_handle = vm.make_call_handle("update(_)");
+            let update_handle = vm.make_call_handle(super::FunctionSignature::new_function("update", 1));
             let interp = vm.call(&update_handle);
             assert!(interp.is_ok());
             assert_eq!(vm.get_slot_type(0), super::SlotType::Num);
@@ -1165,7 +1200,7 @@ mod tests {
             vm.get_variable("main", "GameEngine", 0);
             let _ = vm.get_slot_handle(0);
             vm.set_slot_double(1, 32.2);
-            let update_handle = vm.make_call_handle("update(_)");
+            let update_handle = vm.make_call_handle(super::FunctionSignature::new_function("update", 1));
             let interp = vm.call(&update_handle);
             if let Err(e) = interp.clone() {
                 eprintln!("{}", e);
