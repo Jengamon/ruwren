@@ -568,6 +568,13 @@ impl<'a> VM<'a> {
         }
     }
 
+    // manual GC trigger
+    pub fn collect_garbage(&self) {
+        unsafe {
+            wren_sys::wrenCollectGarbage(self.vm)
+        }
+    }
+
     // Slot and Handle API
     pub fn ensure_slots(&self, count: usize) {
         unsafe {
