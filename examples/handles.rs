@@ -6,7 +6,7 @@ struct Counter {
 }
 
 impl Class for Counter {
-    fn initialize(vm: &VM) -> Counter {
+    fn initialize(_: &VM) -> Counter {
         Counter {
             count: 0,
         }
