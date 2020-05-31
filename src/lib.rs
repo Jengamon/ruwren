@@ -172,6 +172,10 @@ impl<'a> Drop for Handle<'a> {
     }
 }
 
+/// A handle to a Wren method call
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionHandle<'a>(Handle<'a>);
+
 /// Simulates a module structure for foreign functions
 #[derive(Debug)]
 pub struct ModuleLibrary {
@@ -607,9 +611,9 @@ impl<'a> VMWrapper<'a> {
         self.call_handle(&handle)
     }
 
-    pub fn call_handle(&self, handle: &Handle) -> Result<(), VMError> {
+    pub fn call_handle(&self, handle: &FunctionHandle) -> Result<(), VMError> {
         let vm = self.0.borrow();
-        match unsafe { wren_sys::wrenCall(vm.vm, handle.handle) } {
+        match unsafe { wren_sys::wrenCall(vm.vm, handle.0.handle) } {
             wren_sys::WrenInterpretResult_WREN_RESULT_SUCCESS => Ok(()),
             wren_sys::WrenInterpretResult_WREN_RESULT_COMPILE_ERROR => unreachable!("wrenCall doesn't compile anything"),
             wren_sys::WrenInterpretResult_WREN_RESULT_RUNTIME_ERROR => {
@@ -686,7 +690,7 @@ impl<'a> VMWrapper<'a> {
         }
     }
 
-    pub fn make_call_handle(&self, signature: FunctionSignature) -> Rc<Handle> {
+    pub fn make_call_handle(&self, signature: FunctionSignature) -> Rc<FunctionHandle> {
         VM::make_call_handle(self.0.borrow().vm, signature)
     }
 
@@ -1016,15 +1020,15 @@ impl<'a> VM<'a> {
         }
     }
 
-    fn make_call_handle<'b>(vm: *mut WrenVM, signature: FunctionSignature) -> Rc<Handle<'b>> {
+    fn make_call_handle<'b>(vm: *mut WrenVM, signature: FunctionSignature) -> Rc<FunctionHandle<'b>> {
         let signature = ffi::CString::new(signature.as_wren_string()).expect("signature conversion failed");
-        Rc::new(Handle {
+        Rc::new(FunctionHandle(Handle {
             handle: unsafe {
                 wren_sys::wrenMakeCallHandle(vm, signature.as_ptr())
             },
             wvm: vm,
             vm: marker::PhantomData
-        })
+        }))
     }
 
     pub fn abort_fiber(&self, slot: SlotId) {
