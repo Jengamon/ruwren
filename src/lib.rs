@@ -59,41 +59,6 @@ extern "C" fn wren_print(vm: *mut WrenVM, message: *const raw::c_char) {
     conf.printer.print(message_str.to_string_lossy().to_string());
 }
 
-unsafe extern "C" fn wren_foreign_function(func: Rc<RefCell<Fn(&VM)>>, vm: *mut WrenVM) {
-    use std::panic::{catch_unwind, AssertUnwindSafe, set_hook, take_hook};
-    let conf = &mut *(wren_sys::wrenGetUserData(vm) as *mut UserData);
-    let vm = Weak::upgrade(&conf.vm).expect(&format!("Failed to access VM at {:p}", &conf.vm));
-    // TODO Catch panics and return them as runtime errors
-    {
-        println!("Executing func at {:p}", Rc::as_ref(&func));
-        let ref vm_borrow = AssertUnwindSafe(vm.borrow());
-        let ref func_borrow = AssertUnwindSafe(func.borrow()); 
-        set_hook(Box::new(|_| {}));
-        if let Err(error) = catch_unwind(|| { (func_borrow)(vm_borrow); }) {
-            let rtime_error = if let Some(disp) = error.downcast_ref::<String>() {
-                disp.clone()
-            } else if let Some(disp) = error.downcast_ref::<&str>() {
-                disp.to_string()
-            } else {
-                "Panicked with a non-String error".into() 
-            };
-
-            vm_borrow.ensure_slots(1);
-            vm_borrow.set_slot_string(0, rtime_error);
-            vm_borrow.abort_fiber(0);
-        }
-        drop(take_hook());
-    }
-    // match conf.current_function {
-    //     Some(ref func) => {
-            
-    //         conf.current_function = None;
-    //     },
-    //     None => unreachable!()
-    // }
-}
-
-// Use the module library to find the correct function, then pull the VM to run it on the function.
 extern "C" fn wren_bind_foreign_method(vm: *mut WrenVM, mdl: *const raw::c_char, class: *const raw::c_char, is_static: bool, sgn: *const raw::c_char) -> Option<unsafe extern "C" fn(*mut WrenVM)> {
     let conf = unsafe { &mut *(wren_sys::wrenGetUserData(vm) as *mut UserData) };
     let module = unsafe { ffi::CStr::from_ptr(mdl) };
@@ -137,6 +102,18 @@ extern "C" fn wren_bind_foreign_class(vm: *mut WrenVM, mdl: *const raw::c_char, 
     fcm
 }
 
+extern "C" fn wren_load_module(vm: *mut WrenVM, name: *const raw::c_char) -> *mut raw::c_char {
+    // The whoooole reason we wrote wren_realloc - to force Wren into Rust's allocation space
+    let conf = unsafe { &mut *(wren_sys::wrenGetUserData(vm) as *mut UserData) };
+    let module_name = unsafe { ffi::CStr::from_ptr(name) };
+    match conf.loader.load_script(module_name.to_string_lossy().to_string()) {
+        Some(string) => {
+            ffi::CString::new(string).ok().map(|strg| strg.into_raw()).expect(&format!("Failed to convert source to C string for {}", module_name.to_string_lossy()))
+        },
+        None => std::ptr::null_mut()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum VMError {
     Compile {
@@ -165,7 +142,11 @@ impl std::fmt::Display for VMError {
             VMError::Runtime { error, frames } => {
                 writeln!(fmt, "Runtime Error: {}", error)?;
                 for frame in frames {
-                    writeln!(fmt, "\tin {}:{}: {}", frame.module, frame.line, frame.function)?;
+                    if frame.function == "" {
+                        writeln!(fmt, "\tin {}:{}: <constructor>", frame.module, frame.line)?;
+                    } else {
+                        writeln!(fmt, "\tin {}:{}: {}", frame.module, frame.line, frame.function)?;
+                    }
                 }
                 Ok(())
             },
@@ -189,6 +170,7 @@ impl<'a> Drop for Handle<'a> {
 }
 
 /// Simulates a module structure for foreign functions
+#[derive(Debug)]
 pub struct ModuleLibrary {
     modules: HashMap<String, Module>,
 }
@@ -205,7 +187,6 @@ impl ModuleLibrary {
     }
 
     fn get_foreign_class<M: AsRef<str>, C: AsRef<str>>(&self, module: M, class: C) -> Option<&RuntimeClass> {
-        println!("{:#?}", self.modules);
         self.modules.get(module.as_ref()).and_then(|md| md.classes.get(class.as_ref()))
     }
 }
@@ -274,12 +255,6 @@ struct ForeignObject<T> {
     type_id: any::TypeId,
 }
 
-impl<T> Drop for ForeignObject<T> {
-    fn drop(&mut self) {
-        println!("DROPPING FO {:p} {:?}", &self.object, self.type_id);
-    }
-}
-
 #[macro_export]
 macro_rules! create_class_objects {
     ($(
@@ -294,18 +269,41 @@ macro_rules! create_class_objects {
     )+) => {
         $(
             mod $md {
+                use std::panic::{take_hook, set_hook, catch_unwind, AssertUnwindSafe};
                 pub(in super) extern "C" fn _constructor(vm: *mut $crate::WrenVM) {
                     use $crate::Class;
                     unsafe {
                         let conf = &mut *(wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
                         let vm = std::rc::Weak::upgrade(&conf.vm).expect(&format!("Failed to access VM at {:p}", &conf.vm));
-                        let mut wptr = wren_sys::wrenSetSlotNewForeign(vm.borrow().vm, 0, 0, std::mem::size_of::<$crate::ForeignObject<$name>>() as wren_sys::size_t);
+                        let wptr = wren_sys::wrenSetSlotNewForeign(vm.borrow().vm, 0, 0, std::mem::size_of::<$crate::ForeignObject<$name>>() as wren_sys::size_t);
                         // Allocate a new object, and move it onto the heap
-                        let new_obj = Box::new($crate::ForeignObject {
-                            object: Box::into_raw(Box::new(<$name as Class>::initialize(&*vm.borrow()))),
-                            type_id: std::any::TypeId::of::<$name>(),
-                        });
-                        std::ptr::copy_nonoverlapping(Box::leak(new_obj), wptr as *mut _, 1);
+                        // TODO Include panic -> runtime error
+                        set_hook(Box::new(|_| {}));
+                        let vm_borrow = AssertUnwindSafe(vm.borrow());
+                        let object = match catch_unwind(|| <$name as Class>::initialize(&*vm_borrow)) {
+                            Ok(obj) => Some(obj),
+                            Err(err) => {
+                                let err_string = if let Some(strg) = err.downcast_ref::<String>() {
+                                    strg.clone()
+                                } else if let Some(strg) = err.downcast_ref::<&str>() {
+                                    strg.to_string()
+                                } else {
+                                    "Non-string panic message".into()
+                                };
+
+                                vm_borrow.set_slot_string(0, err_string);
+                                vm_borrow.abort_fiber(0);
+                                None
+                            }
+                        };
+                        drop(take_hook());
+                        if let Some(object) = object {
+                            let new_obj = Box::new($crate::ForeignObject {
+                                object: Box::into_raw(Box::new(object)),
+                                type_id: std::any::TypeId::of::<$name>(),
+                            });
+                            std::ptr::copy_nonoverlapping(Box::leak(new_obj), wptr as *mut _, 1);
+                        }
                     }
                 }
 
@@ -355,24 +353,62 @@ macro_rules! create_class_objects {
 
     (@fn static $name:ty => $s:ident) => {
         pub(in super) unsafe extern "C" fn $s(vm: *mut wren_sys::WrenVM) {
+            use std::panic::{take_hook, set_hook, catch_unwind, AssertUnwindSafe};
+
             let conf = &mut *(wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
             let vm = std::rc::Weak::upgrade(&conf.vm).expect(&format!("Failed to access VM at {:p}", &conf.vm));
-            <$name>::$s(&*vm.borrow());
+            set_hook(Box::new(|_| {}));
+            let vm_borrow = AssertUnwindSafe(vm.borrow());
+            match catch_unwind(|| <$name>::$s(&*vm_borrow)) {
+                Ok(_) => (),
+                Err(err) => {
+                    let err_string = if let Some(strg) = err.downcast_ref::<String>() {
+                        strg.clone()
+                    } else if let Some(strg) = err.downcast_ref::<&str>() {
+                        strg.to_string()
+                    } else {
+                        "Non-string panic message".into()
+                    };
+
+                    vm_borrow.set_slot_string(0, err_string);
+                    vm_borrow.abort_fiber(0);
+                }
+            };
+            drop(take_hook());
         }
     };
 
     (@fn instance $name:ty => $inf:ident) => {
         pub(in super) unsafe extern "C" fn $inf(vm: *mut wren_sys::WrenVM) {
+            use std::panic::{take_hook, set_hook, catch_unwind, AssertUnwindSafe};
+            
             let conf = &mut *(wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
             let vm = std::rc::Weak::upgrade(&conf.vm).expect(&format!("Failed to access VM at {:p}", &conf.vm));
-            <$name>::$inf(&*vm.borrow());
+            set_hook(Box::new(|_| {}));
+            let vm_borrow = AssertUnwindSafe(vm.borrow());
+            match catch_unwind(|| <$name>::$inf(&*vm_borrow)) {
+                Ok(_) => (),
+                Err(err) => {
+                    let err_string = if let Some(strg) = err.downcast_ref::<String>() {
+                        strg.clone()
+                    } else if let Some(strg) = err.downcast_ref::<&str>() {
+                        strg.to_string()
+                    } else {
+                        "Non-string panic message".into()
+                    };
+
+                    vm_borrow.set_slot_string(0, err_string);
+                    vm_borrow.abort_fiber(0);
+                }
+            };
+            drop(take_hook());
         }
     }
 }
 
 /// Enables one to plug-in a module loader for Wren
-pub trait ModuleLoader {
-
+pub trait ModuleScriptLoader {
+    fn load_script(&mut self, name: String) -> Option<String>;
 }
 
 pub type EVM<'a> = Rc<RefCell<VM<'a>>>;
@@ -398,6 +434,11 @@ impl Printer for PrintlnPrinter {
     }
 }
 
+pub struct NullLoader;
+impl ModuleScriptLoader for NullLoader {
+    fn load_script(&mut self, _: String) -> Option<String> { None }
+}
+
 pub struct VM<'l> {
     vm: *mut WrenVM,
     error_recv: Receiver<WrenError>,
@@ -407,8 +448,10 @@ pub struct VM<'l> {
 struct UserData<'a> {
     error_channel: Sender<WrenError>,
     printer: Box<dyn Printer>,
-    vm: Weak<RefCell<VM<'a>>>,
+    #[allow(dead_code)] 
+    vm: Weak<RefCell<VM<'a>>>, // is used a *lot* by generated code.
     library: Option<&'a ModuleLibrary>,
+    loader: Box<dyn ModuleScriptLoader>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -422,12 +465,13 @@ pub enum SlotType {
     Unknown
 }
 
+// TODO Expose more VM configuration (initalHeap, maxHeap, etc.)
 impl<'a> VM<'a> {
     pub fn new_terminal(library: Option<&ModuleLibrary>) -> EVM {
-        VM::new(PrintlnPrinter, library)
+        VM::new(PrintlnPrinter, NullLoader, library)
     }
 
-    pub fn new<P: Printer + 'static>(p: P, library: Option<&ModuleLibrary>) -> EVM {
+    pub fn new<P: 'static + Printer, L: 'static + ModuleScriptLoader>(p: P, l: L, library: Option<&ModuleLibrary>) -> EVM {
         let (etx, erx) = channel();
 
         // Have an uninitialized VM...
@@ -441,6 +485,7 @@ impl<'a> VM<'a> {
             error_channel: etx,
             printer: Box::new(p),
             vm: Rc::downgrade(&wvm),
+            loader: Box::new(l),
             library,
         }));
 
@@ -455,6 +500,7 @@ impl<'a> VM<'a> {
             config.reallocateFn = Some(wren_realloc);
             config.bindForeignMethodFn = Some(wren_bind_foreign_method);
             config.bindForeignClassFn = Some(wren_bind_foreign_class);
+            config.loadModuleFn = Some(wren_load_module);
             config.userData = vm_config as *mut ffi::c_void;
             config
         };
@@ -668,7 +714,6 @@ impl<'a> VM<'a> {
     pub fn get_slot_foreign_mut<T: 'static>(&self, slot: i32) -> Option<&mut T> {
         unsafe {
             let ptr = wren_sys::wrenGetSlotForeign(self.vm, slot as raw::c_int);
-            println!("BABLE {:p}", ptr);
             if ptr != std::ptr::null_mut() {
                 let fo = &mut *(ptr as *mut ForeignObject<T>);
                 if fo.type_id == any::TypeId::of::<T>() {
@@ -827,7 +872,7 @@ mod tests {
         lib.module("main", module);
         let vm = super::VM::new_terminal(Some(&lib));
         vm.execute(|vm| {
-            let source = vm.interpret("main", r"
+            let source = vm.interpret("main", "
             class Math {
                 foreign static add5(a)
             }
@@ -870,7 +915,57 @@ mod tests {
             vm.set_slot_double(1, 32.2);
             let update_handle = vm.make_call_handle("update(_)");
             let interp = vm.call(&update_handle);
-            println!("{:?}", interp);
+            if let Err(e) = interp.clone() {
+                eprintln!("{}", e);
+            }
+            assert!(interp.is_ok());
+            assert_eq!(vm.get_slot_type(0), super::SlotType::Num);
+            assert_eq!(vm.get_slot_double(0), 21.45);
+        });
+    }
+
+    #[test]
+    fn test_script_module() {
+        struct TestLoader;
+
+        impl super::ModuleScriptLoader for TestLoader {
+            fn load_script(&mut self, name: String) -> Option<String> {
+                if name == "math" {
+                    Some("
+                    class Math {
+                        static add5(val) {
+                            return val + 5
+                        }
+                    }
+                    ".into())
+                } else {
+                    None
+                }
+            }
+        }
+
+        let vm = super::VM::new(super::PrintlnPrinter, TestLoader, None);
+        vm.execute(|vm| {
+            let source = vm.interpret("main", "
+            import \"math\" for Math
+
+            class GameEngine {
+                static update(elapsedTime) {
+                    System.print(elapsedTime)
+                    return Math.add5(16.45)
+                }
+            }
+            ");
+            assert!(source.is_ok());
+        });
+
+        vm.execute(|vm| {
+            vm.ensure_slots(2);
+            vm.get_variable("main", "GameEngine", 0);
+            let _ = vm.get_slot_handle(0);
+            vm.set_slot_double(1, 32.2);
+            let update_handle = vm.make_call_handle("update(_)");
+            let interp = vm.call(&update_handle);
             assert!(interp.is_ok());
             assert_eq!(vm.get_slot_type(0), super::SlotType::Num);
             assert_eq!(vm.get_slot_double(0), 21.45);
