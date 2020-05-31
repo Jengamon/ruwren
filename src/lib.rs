@@ -784,6 +784,12 @@ impl<'a> VM<'a> {
         }
     }
 
+    pub fn get_list_count(&self, slot: i32) -> usize {
+        unsafe {
+            wren_sys::wrenGetListCount(self.vm, slot as raw::c_int) as usize
+        }
+    }
+
     pub fn get_slot_handle(&self, slot: i32) -> Handle {
         Handle {
             handle: unsafe {
