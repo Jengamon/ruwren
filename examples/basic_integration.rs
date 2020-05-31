@@ -11,6 +11,12 @@ impl Class for Vector {
     }
 }
 
+impl Drop for Vector {
+    fn drop(&mut self) {
+        println!("Dropping Vector {} {}", self.x, self.y)
+    }
+}
+
 impl Vector {
     fn x(&self, vm: &VM) {
         vm.set_slot_double(0, self.x);
