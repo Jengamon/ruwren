@@ -507,14 +507,14 @@ pub trait Printer {
     fn print(&mut self, s: String);
 }
 
-pub struct PrintlnPrinter;
+struct PrintlnPrinter;
 impl Printer for PrintlnPrinter {
     fn print(&mut self, s: String) {
         print!("{}", s);
     }
 }
 
-pub struct NullLoader;
+struct NullLoader;
 impl ModuleScriptLoader for NullLoader {
     fn load_script(&mut self, _: String) -> Option<String> { None }
 }
@@ -698,9 +698,63 @@ impl<'a> VMWrapper<'a> {
     }
 }
 
-// TODO Expose more VM configuration (initalHeap, maxHeap, etc.)
-impl<'a> VM<'a> {
-    pub fn new<P: 'static + Printer, L: 'static + ModuleScriptLoader>(p: P, l: L, library: Option<&ModuleLibrary>) -> VMWrapper {
+pub struct VMConfig<'a> {
+    printer: Box<dyn Printer>,
+    script_loader: Box<dyn ModuleScriptLoader>,
+    library: Option<&'a ModuleLibrary>,
+    initial_heap_size: usize,
+    min_heap_size: usize,
+    heap_growth_percent: usize,
+}
+
+impl<'a> VMConfig<'a> {
+    pub fn new() -> VMConfig<'a> {
+        VMConfig {
+            printer: Box::new(PrintlnPrinter),
+            script_loader: Box::new(NullLoader),
+            library: None,
+            initial_heap_size: 1024 * 1024 * 10,
+            min_heap_size: 1024 * 1024,
+            heap_growth_percent: 50,
+        }
+    }
+
+    pub fn printer<P: 'static + Printer>(mut self, p: P) -> Self {
+        self.printer = Box::new(p);
+        self
+    }
+
+    pub fn script_loader<L: 'static + ModuleScriptLoader>(mut self, l: L) -> Self {
+        self.script_loader = Box::new(l);
+        self
+    }
+
+    pub fn library(mut self, l: &'a ModuleLibrary) -> Self {
+        self.library = Some(l);
+        self
+    }
+
+    pub fn no_library(mut self) -> Self {
+        self.library = None;
+        self
+    }
+
+    pub fn initial_heap_size(mut self, ihs: usize) -> Self {
+        self.initial_heap_size = ihs;
+        self
+    }
+
+    pub fn min_heap_size(mut self, mhs: usize) -> Self {
+        self.min_heap_size = mhs;
+        self
+    }
+
+    pub fn heap_growth_percent(mut self, hgp: usize) -> Self {
+        self.heap_growth_percent = hgp;
+        self
+    }
+
+    pub fn build(self) -> VMWrapper<'a> {
         let (etx, erx) = channel();
 
         // Have an uninitialized VM...
@@ -712,10 +766,10 @@ impl<'a> VM<'a> {
 
         let vm_config = Box::into_raw(Box::new(UserData {
             error_channel: etx,
-            printer: Box::new(p),
+            printer: self.printer,
             vm: Rc::downgrade(&wvm),
-            loader: Box::new(l),
-            library,
+            loader: self.script_loader,
+            library: self.library,
         }));
 
         // Configure the Wren side of things
@@ -729,6 +783,9 @@ impl<'a> VM<'a> {
             config.bindForeignMethodFn = Some(wren_bind_foreign_method);
             config.bindForeignClassFn = Some(wren_bind_foreign_class);
             config.loadModuleFn = Some(wren_load_module);
+            config.initialHeapSize = self.initial_heap_size as wren_sys::size_t;
+            config.minHeapSize = self.min_heap_size as wren_sys::size_t;
+            config.heapGrowthPercent = self.heap_growth_percent as raw::c_int;
             config.userData = vm_config as *mut ffi::c_void;
             config
         };
@@ -737,7 +794,10 @@ impl<'a> VM<'a> {
         wvm.borrow_mut().vm = vm;
         VMWrapper(wvm)
     }
+}
 
+// TODO Expose more VM configuration (initalHeap, maxHeap, etc.)
+impl<'a> VM<'a> {
     // Slot and Handle API
     pub fn ensure_slots(&self, count: usize) {
         unsafe {
@@ -986,7 +1046,7 @@ impl<'a> Drop for VM<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::{create_module, get_slot_checked, PrintlnPrinter, NullLoader, VM};
+    use super::{create_module, get_slot_checked, VMConfig};
 
     struct Point {
         x: f64,
@@ -1054,12 +1114,12 @@ mod tests {
 
     #[test]
     fn init_vm() {
-        let _ = VM::new(PrintlnPrinter, NullLoader, None);
+        let _ = VMConfig::new().build();
     }
 
     #[test]
     fn test_small_wren_program() {
-        let vm = VM::new(PrintlnPrinter, NullLoader, None);
+        let vm = VMConfig::new().build();
         let interp = vm.interpret("main", "System.print(\"I am running in a VM!\")");
         println!("{:?}", interp);
         assert!(interp.is_ok());
@@ -1067,7 +1127,7 @@ mod tests {
 
     #[test]
     fn test_small_wren_program_call() {
-        let vm = VM::new(PrintlnPrinter, NullLoader, None);
+        let vm = VMConfig::new().build();
 
         let source = vm.interpret("main", r"
         class GameEngine {
@@ -1096,7 +1156,7 @@ mod tests {
     fn test_external_module() {
         let mut lib = super::ModuleLibrary::new();
         main::publish_module(&mut lib);
-        let vm = VM::new(PrintlnPrinter, NullLoader, Some(&lib));
+        let vm = VMConfig::new().library(&lib).build();
         let source = vm.interpret("main", "
         class Math {
             foreign static add5(a)
@@ -1169,7 +1229,7 @@ mod tests {
             }
         }
 
-        let vm = super::VM::new(PrintlnPrinter, TestLoader, None);
+        let vm = VMConfig::new().script_loader(TestLoader).build();
         let source = vm.interpret("main", "
         import \"math\" for Math
 
@@ -1201,7 +1261,7 @@ mod tests {
     fn foreign_instance() {
         let mut lib = super::ModuleLibrary::new();
         main::publish_module(&mut lib);
-        let vm = VM::new(PrintlnPrinter, NullLoader, Some(&lib));
+        let vm = VMConfig::new().library(&lib).build();
         let source = vm.interpret("main", "
         class Math {
             foreign static add5(a)

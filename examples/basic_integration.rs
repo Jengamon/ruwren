@@ -1,4 +1,4 @@
-use ruwren::{VM, Class, PrintlnPrinter, NullLoader, ModuleLibrary, create_module, get_slot_checked, send_foreign};
+use ruwren::{VM, Class, VMConfig, ModuleLibrary, create_module, get_slot_checked, send_foreign};
 
 struct Vector {
     x: f64,
@@ -71,7 +71,7 @@ static MATHS_MODULE_SRC: &'static str = include_str!("maths.wren");
 fn main() {
     let mut lib = ModuleLibrary::new();
     maths::publish_module(&mut lib);
-    let vm = VM::new(PrintlnPrinter, NullLoader, Some(&lib));
+    let vm = VMConfig::new().library(&lib).build();
     vm.interpret("maths", MATHS_MODULE_SRC).unwrap(); // Should succeed
 
     let res = vm.interpret("main", include_str!("basic_integration.wren"));

@@ -1,4 +1,4 @@
-use ruwren::{VM, Class, PrintlnPrinter, NullLoader, ModuleLibrary, FunctionSignature, create_module};
+use ruwren::{VM, VMConfig, Class, ModuleLibrary, FunctionSignature, create_module};
 use std::time::{SystemTime, Instant};
 
 struct Counter {
@@ -41,7 +41,7 @@ create_module! {
 fn main() {
     let mut lib = ModuleLibrary::new();
     main::publish_module(&mut lib);
-    let vm = VM::new(PrintlnPrinter, NullLoader, Some(&lib));
+    let vm = VMConfig::new().library(&lib).build();
 
     vm.interpret("main", include_str!("handles.wren")).unwrap(); // Should succeed
 
