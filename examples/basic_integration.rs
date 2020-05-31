@@ -13,22 +13,18 @@ impl Class for Vector {
 
 impl Vector {
     fn x(&self, vm: &VM) {
-        vm.ensure_slots(1);
         vm.set_slot_double(0, self.x);
     }
 
     fn y(&self, vm: &VM) {
-        vm.ensure_slots(1);
         vm.set_slot_double(0, self.y);
     }
 
     fn set_x(&mut self, vm: &VM) {
-        vm.ensure_slots(2);
         self.x = get_slot_checked!(vm => num 1);
     }
 
     fn set_y(&mut self, vm: &VM) {
-        vm.ensure_slots(2);
         self.y = get_slot_checked!(vm => num 1);
     }
 }
@@ -43,7 +39,6 @@ impl Class for Math {
 
 impl Math {
     fn new_vector(vm: &VM) {
-        vm.ensure_slots(3);
         let x = get_slot_checked!(vm => num 1);
         let y = get_slot_checked!(vm => num 2);
         send_foreign!(vm, "maths", "Vector", Vector { x, y } => 0);
