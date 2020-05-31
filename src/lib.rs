@@ -285,7 +285,6 @@ macro_rules! create_module {
                         let vm = std::rc::Weak::upgrade(&conf.vm).expect(&format!("Failed to access VM at {:p}", &conf.vm));
                         let wptr = wren_sys::wrenSetSlotNewForeign(vm.borrow().vm, 0, 0, std::mem::size_of::<$crate::ForeignObject<$name>>() as wren_sys::size_t);
                         // Allocate a new object, and move it onto the heap
-                        // TODO Include panic -> runtime error
                         set_hook(Box::new(|_| {}));
                         let vm_borrow = AssertUnwindSafe(vm.borrow());
                         let object = match catch_unwind(|| <$name as Class>::initialize(&*vm_borrow)) {
@@ -305,6 +304,7 @@ macro_rules! create_module {
                             }
                         };
                         drop(take_hook());
+                        // Copy the object pointer if we were successful
                         if let Some(object) = object {
                             let new_obj = Box::new($crate::ForeignObject {
                                 object: Box::into_raw(Box::new(object)),
@@ -568,7 +568,6 @@ impl<'a> VM<'a> {
             let mut uconfig = mem::MaybeUninit::<WrenConfiguration>::zeroed();
             wren_sys::wrenInitConfiguration(uconfig.as_mut_ptr());
             let mut config = uconfig.assume_init();
-            // Stuff the callbacks into user data
             config.errorFn = Some(wren_error);
             config.writeFn = Some(wren_print);
             config.reallocateFn = Some(wren_realloc);
@@ -585,7 +584,6 @@ impl<'a> VM<'a> {
     }
 
     pub fn call(&self, handle: &Handle) -> Result<(), VMError> {
-        // TODO Do we need to check if this handle came from this VM, or does Wren do that for us?
         match unsafe { wren_sys::wrenCall(self.vm, handle.handle) } {
             wren_sys::WrenInterpretResult_WREN_RESULT_SUCCESS => Ok(()),
             wren_sys::WrenInterpretResult_WREN_RESULT_COMPILE_ERROR => unreachable!("wrenCall doesn't compile anything"),
