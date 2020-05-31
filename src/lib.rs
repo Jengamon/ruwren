@@ -433,33 +433,34 @@ macro_rules! create_module {
 /// Checks if the slot type is correct at the given slot.
 /// If not, will panic.
 /// If it is, will return the item at the given slot.
+// We can do unwraps because we manually check the type beforehand, so we are *sure* it is there.
 #[macro_export]
 macro_rules! get_slot_checked {
     ($vm:expr => num $slot:expr) => {
         {
             if $vm.get_slot_type($slot) != $crate::SlotType::Num { panic!("rust error [{}:{}]: Slot {} is not a <num>", file!(), line!(), $slot) }
-            $vm.get_slot_double($slot)
+            $vm.get_slot_double($slot).unwrap()
         }
     };
 
     ($vm:expr => bool $slot:expr) => {
         {
             if $vm.get_slot_type($slot) != $crate::SlotType::Bool { panic!("rust error [{}:{}]: Slot {} is not a <bool>", file!(), line!(), $slot) }
-            $vm.get_slot_bool($slot)
+            $vm.get_slot_bool($slot).unwrap()
         }
     };
 
     ($vm:expr => string $slot:expr) => {
         {
             if $vm.get_slot_type($slot) != $crate::SlotType::String { panic!("rust error [{}:{}]: Slot {} is not a <string>", file!(), line!(), $slot) }
-            $vm.get_slot_string($slot)
+            $vm.get_slot_string($slot).unwrap()
         }
     };
 
     ($vm:expr => bytes $slot:expr) => {
         {
             if $vm.get_slot_type($slot) != $crate::SlotType::String { panic!("rust error [{}:{}]: Slot {} is not a <string>", file!(), line!(), $slot) }
-            $vm.get_slot_bytes($slot)
+            $vm.get_slot_bytes($slot).unwrap()
         }
     };
 }
@@ -694,43 +695,59 @@ impl<'a> VM<'a> {
         }
     }
 
-    pub fn get_slot_bool(&self, slot: i32) -> bool {
-        unsafe {
-            wren_sys::wrenGetSlotBool(self.vm, slot as raw::c_int)
-        }
-    }
-
-    pub fn get_slot_double(&self, slot: i32) -> f64 {
-        unsafe {
-            wren_sys::wrenGetSlotDouble(self.vm, slot as raw::c_int)
-        }
-    }
-
-    pub fn get_slot_bytes(&self, slot: i32) -> Vec<u8> {
-        let mut length = 0 as raw::c_int;
-        let ptr = unsafe {
-            wren_sys::wrenGetSlotBytes(self.vm, slot as raw::c_int, &mut length as *mut _)
-        };
-        let mut bytes = vec![];
-
-        // Do some pointer maths to get the vector. Hurrah!
-        for offset in 0..length {
+    pub fn get_slot_bool(&self, slot: i32) -> Option<bool> {
+        if self.get_slot_type(slot) != SlotType::Bool {
+            None
+        } else {
             unsafe {
-                bytes.push(*ptr.offset(offset as isize) as u8)
+                Some(wren_sys::wrenGetSlotBool(self.vm, slot as raw::c_int))
             }
         }
-
-        bytes
     }
 
-    pub fn get_slot_string(&self, slot: i32) -> String {
-        let ptr = unsafe {
-            wren_sys::wrenGetSlotString(self.vm, slot as raw::c_int)
-        };
+    pub fn get_slot_double(&self, slot: i32) -> Option<f64> {
+        if self.get_slot_type(slot) != SlotType::Num {
+            None
+        } else {
+            unsafe {
+                Some(wren_sys::wrenGetSlotDouble(self.vm, slot as raw::c_int))
+            }
+        }
+    }
 
-        let cstr = unsafe{ ffi::CStr::from_ptr(ptr) };
+    pub fn get_slot_bytes(&self, slot: i32) -> Option<Vec<u8>> {
+        if self.get_slot_type(slot) != SlotType::String {
+            None
+        } else {
+            let mut length = 0 as raw::c_int;
+            let ptr = unsafe {
+                wren_sys::wrenGetSlotBytes(self.vm, slot as raw::c_int, &mut length as *mut _)
+            };
+            let mut bytes = vec![];
 
-        cstr.to_string_lossy().to_string()
+            // Do some pointer maths to get the vector. Hurrah!
+            for offset in 0..length {
+                unsafe {
+                    bytes.push(*ptr.offset(offset as isize) as u8)
+                }
+            }
+
+            Some(bytes)
+        }
+    }
+
+    pub fn get_slot_string(&self, slot: i32) -> Option<String> {
+        if self.get_slot_type(slot) != SlotType::String {
+            None
+        } else {
+            let ptr = unsafe {
+                wren_sys::wrenGetSlotString(self.vm, slot as raw::c_int)
+            };
+    
+            let cstr = unsafe{ ffi::CStr::from_ptr(ptr) };
+    
+            Some(cstr.to_string_lossy().to_string())
+        }
     }
 
     pub fn get_slot_type(&self, slot: i32) -> SlotType {
@@ -896,7 +913,7 @@ impl<'a> Drop for VM<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Executor, create_module};
+    use super::{Executor, create_module, get_slot_checked};
 
     struct Point {
         x: f64,
@@ -910,17 +927,14 @@ mod tests {
 
         fn set_x(&mut self, vm: &super::VM) {
             vm.ensure_slots(2);
-            if vm.get_slot_type(1) != super::SlotType::Num { panic!("x must be a number"); }
-            let new_x = vm.get_slot_double(1);
-            self.x = new_x;
+            self.x = get_slot_checked!(vm => num 1);
         }
     }
 
     impl super::Class for Point {
         fn initialize(vm: &super::VM) -> Point {
             vm.ensure_slots(2);
-            if vm.get_slot_type(1) != super::SlotType::Num { panic!("constructor must be (<num>)")};
-            let x = vm.get_slot_double(1);
+            let x = get_slot_checked!(vm => num 1);
             Point {
                 x,
             }
@@ -936,8 +950,7 @@ mod tests {
     impl Math {
         fn add5(vm: &super::VM) {
             vm.ensure_slots(2);
-            assert_eq!(vm.get_slot_type(1), super::SlotType::Num);
-            let i = vm.get_slot_double(1);
+            let i = get_slot_checked!(vm => num 1);
             vm.set_slot_double(0, i + 5.0);
         }
 
@@ -1006,7 +1019,7 @@ mod tests {
             let interp = vm.call(&update_handle);
             assert!(interp.is_ok());
             assert_eq!(vm.get_slot_type(0), super::SlotType::Num);
-            assert_eq!(vm.get_slot_double(0), 16.45);
+            assert_eq!(vm.get_slot_double(0), Some(16.45));
         });
     }
 
@@ -1064,7 +1077,7 @@ mod tests {
             }
             assert!(interp.is_ok());
             assert_eq!(vm.get_slot_type(0), super::SlotType::Num);
-            assert_eq!(vm.get_slot_double(0), 21.45);
+            assert_eq!(vm.get_slot_double(0), Some(21.45));
         });
     }
 
@@ -1112,7 +1125,7 @@ mod tests {
             let interp = vm.call(&update_handle);
             assert!(interp.is_ok());
             assert_eq!(vm.get_slot_type(0), super::SlotType::Num);
-            assert_eq!(vm.get_slot_double(0), 21.45);
+            assert_eq!(vm.get_slot_double(0), Some(21.45));
         });
     }
 
@@ -1160,7 +1173,7 @@ mod tests {
             }
             assert!(interp.is_ok());
             assert_eq!(vm.get_slot_type(0), super::SlotType::Num);
-            assert_eq!(vm.get_slot_double(0), 21.45);
+            assert_eq!(vm.get_slot_double(0), Some(21.45));
         });
     }
 }
