@@ -540,6 +540,8 @@ pub enum SlotType {
     Unknown
 }
 
+pub type SlotId = usize;
+
 // TODO Expose more VM configuration (initalHeap, maxHeap, etc.)
 impl<'a> VM<'a> {
     pub fn new_terminal(library: Option<&ModuleLibrary>) -> EVM {
@@ -661,41 +663,38 @@ impl<'a> VM<'a> {
         }
     }
 
-    // TODO Change slots from i32 to usize
-    // TODO Make a value-agnostic slot API too.
-
-    pub fn set_slot_bool(&self, slot: i32, val: bool) {
+    pub fn set_slot_bool(&self, slot: SlotId, val: bool) {
         unsafe {
             wren_sys::wrenSetSlotBool(self.vm, slot as raw::c_int, val)
         }
     }
 
-    pub fn set_slot_double(&self, slot: i32, val: f64) {
+    pub fn set_slot_double(&self, slot: SlotId, val: f64) {
         unsafe {
             wren_sys::wrenSetSlotDouble(self.vm, slot as raw::c_int, val)
         }
     }
 
-    pub fn set_slot_null(&self, slot: i32) {
+    pub fn set_slot_null(&self, slot: SlotId) {
         unsafe {
             wren_sys::wrenSetSlotNull(self.vm, slot as raw::c_int)
         }
     }
 
-    pub fn set_slot_bytes(&self, slot: i32, bytes: &[u8]) {
+    pub fn set_slot_bytes(&self, slot: SlotId, bytes: &[u8]) {
         unsafe {
             wren_sys::wrenSetSlotBytes(self.vm, slot as raw::c_int, bytes as *const _ as *const raw::c_char, bytes.len() as wren_sys::size_t);
         }
     }
 
-    pub fn set_slot_string<S: AsRef<str>>(&self, slot: i32, string: S) {
+    pub fn set_slot_string<S: AsRef<str>>(&self, slot: SlotId, string: S) {
         let string = string.as_ref();
         unsafe {
             wren_sys::wrenSetSlotBytes(self.vm, slot as raw::c_int, string.as_ptr() as *const _, string.len() as wren_sys::size_t);
         }
     }
 
-    pub fn get_slot_bool(&self, slot: i32) -> Option<bool> {
+    pub fn get_slot_bool(&self, slot: SlotId) -> Option<bool> {
         if self.get_slot_type(slot) != SlotType::Bool {
             None
         } else {
@@ -705,7 +704,7 @@ impl<'a> VM<'a> {
         }
     }
 
-    pub fn get_slot_double(&self, slot: i32) -> Option<f64> {
+    pub fn get_slot_double(&self, slot: SlotId) -> Option<f64> {
         if self.get_slot_type(slot) != SlotType::Num {
             None
         } else {
@@ -715,7 +714,7 @@ impl<'a> VM<'a> {
         }
     }
 
-    pub fn get_slot_bytes(&self, slot: i32) -> Option<Vec<u8>> {
+    pub fn get_slot_bytes(&self, slot: SlotId) -> Option<Vec<u8>> {
         if self.get_slot_type(slot) != SlotType::String {
             None
         } else {
@@ -736,7 +735,7 @@ impl<'a> VM<'a> {
         }
     }
 
-    pub fn get_slot_string(&self, slot: i32) -> Option<String> {
+    pub fn get_slot_string(&self, slot: SlotId) -> Option<String> {
         if self.get_slot_type(slot) != SlotType::String {
             None
         } else {
@@ -750,7 +749,7 @@ impl<'a> VM<'a> {
         }
     }
 
-    pub fn get_slot_type(&self, slot: i32) -> SlotType {
+    pub fn get_slot_type(&self, slot: SlotId) -> SlotType {
         match unsafe { wren_sys::wrenGetSlotType(self.vm, slot as raw::c_int) } {
             wren_sys::WrenType_WREN_TYPE_NUM => SlotType::Num,
             wren_sys::WrenType_WREN_TYPE_BOOL => SlotType::Bool,
@@ -763,7 +762,7 @@ impl<'a> VM<'a> {
         }
     }
 
-    pub fn get_variable<M: AsRef<str>, N: AsRef<str>>(&self, module: M, name: N, slot: i32) {
+    pub fn get_variable<M: AsRef<str>, N: AsRef<str>>(&self, module: M, name: N, slot: SlotId) {
         let module = ffi::CString::new(module.as_ref()).expect("module name conversion failed");
         let name = ffi::CString::new(name.as_ref()).expect("variable name conversion failed");
         unsafe {
@@ -771,13 +770,13 @@ impl<'a> VM<'a> {
         }
     }
 
-    pub fn set_slot_new_list(&self, slot: i32) {
+    pub fn set_slot_new_list(&self, slot: SlotId) {
         unsafe {
             wren_sys::wrenSetSlotNewList(self.vm, slot as raw::c_int)
         }
     }
 
-    pub fn insert_in_list(&self, list_slot: i32, index: i32, element_slot: i32) {
+    pub fn insert_in_list(&self, list_slot: SlotId, index: i32, element_slot: SlotId) {
         unsafe {
             wren_sys::wrenInsertInList(
                 self.vm, 
@@ -788,7 +787,7 @@ impl<'a> VM<'a> {
         }
     }
 
-    pub fn get_list_element(&self, list_slot: i32, index: i32, element_slot: i32) {
+    pub fn get_list_element(&self, list_slot: SlotId, index: i32, element_slot: SlotId) {
         unsafe {
             wren_sys::wrenGetListElement(
                 self.vm, 
@@ -799,13 +798,13 @@ impl<'a> VM<'a> {
         }
     }
 
-    pub fn get_list_count(&self, slot: i32) -> usize {
+    pub fn get_list_count(&self, slot: SlotId) -> usize {
         unsafe {
             wren_sys::wrenGetListCount(self.vm, slot as raw::c_int) as usize
         }
     }
 
-    pub fn get_slot_handle(&self, slot: i32) -> Handle {
+    pub fn get_slot_handle(&self, slot: SlotId) -> Handle {
         Handle {
             handle: unsafe {
                 wren_sys::wrenGetSlotHandle(self.vm, slot as raw::c_int)
@@ -814,17 +813,17 @@ impl<'a> VM<'a> {
         }
     }
 
-    pub fn set_slot_handle(&self, slot: i32, handle: &Handle) {
+    pub fn set_slot_handle(&self, slot: SlotId, handle: &Handle) {
         unsafe {
             wren_sys::wrenSetSlotHandle(self.vm, slot as raw::c_int, handle.handle)
         }
     }
 
-    pub fn get_slot_foreign<T: 'static + ClassObject>(&self, slot: i32) -> Option<&T> {
+    pub fn get_slot_foreign<T: 'static + ClassObject>(&self, slot: SlotId) -> Option<&T> {
         self.get_slot_foreign_mut(slot).map(|mr| &*mr)
     }
 
-    pub fn get_slot_foreign_mut<T: 'static + ClassObject>(&self, slot: i32) -> Option<&mut T> {
+    pub fn get_slot_foreign_mut<T: 'static + ClassObject>(&self, slot: SlotId) -> Option<&mut T> {
         unsafe {
             let ptr = wren_sys::wrenGetSlotForeign(self.vm, slot as raw::c_int);
             if ptr != std::ptr::null_mut() {
@@ -845,7 +844,7 @@ impl<'a> VM<'a> {
     /// Looks up the specifed [module] for the specified [class]
     /// If it's type matches with type T, will create a new instance in [slot]
     /// WARNING: This *will* overwrite slot 0, so be careful.
-    pub fn set_slot_new_foreign<M: AsRef<str>, C: AsRef<str>, T: 'static + ClassObject>(&self, module: M, class: C, object: T, slot: i32) -> Option<&mut T> {
+    pub fn set_slot_new_foreign<M: AsRef<str>, C: AsRef<str>, T: 'static + ClassObject>(&self, module: M, class: C, object: T, slot: SlotId) -> Option<&mut T> {
         let conf = unsafe { &mut *(wren_sys::wrenGetUserData(self.vm) as *mut UserData) };
 
         self.ensure_slots((slot + 1) as usize);
@@ -894,7 +893,7 @@ impl<'a> VM<'a> {
         }
     }
 
-    pub fn abort_fiber(&self, slot: i32) {
+    pub fn abort_fiber(&self, slot: SlotId) {
         unsafe {
             wren_sys::wrenAbortFiber(self.vm, slot as raw::c_int)
         }
