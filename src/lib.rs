@@ -149,9 +149,9 @@ pub enum VMError {
 
 #[derive(Debug, Clone)]
 pub struct VMStackFrameError {
-    module: String,
-    line: i32,
-    function: String
+    pub module: String,
+    pub line: i32,
+    pub function: String
 }
 
 
