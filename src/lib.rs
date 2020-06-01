@@ -623,6 +623,7 @@ impl FunctionSignature {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct VMWrapper(EVM);
 
 impl VMWrapper {
