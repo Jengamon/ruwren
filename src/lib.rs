@@ -1026,10 +1026,10 @@ impl VM {
                     // We can coerce it and treat this object as that class, even if not instantiated by Wren.
 
                     // Create the new ForeignObject
-                    let new_obj = Box::new(ForeignObject {
+                    let new_obj = ForeignObject {
                         object: Box::into_raw(Box::new(object)),
                         type_id: any::TypeId::of::<T>(),
-                    });
+                    };
 
                     // Load the Wren class object into slot 0.
                     self.get_variable(module, class, 0);
@@ -1037,9 +1037,9 @@ impl VM {
                     unsafe {
                         // Create the Wren foreign pointer
                         let wptr = wren_sys::wrenSetSlotNewForeign(self.vm, slot as raw::c_int, 0, mem::size_of::<ForeignObject<T>>() as wren_sys::size_t);
-                        
+
                         // Move the ForeignObject into the pointer
-                        std::ptr::copy_nonoverlapping(Box::leak(new_obj), wptr as *mut _, 1);
+                        std::ptr::write(wptr as *mut _, new_obj);
 
                         // Reinterpret the pointer as an object if we were successful
                         (wptr as *mut T).as_mut()
