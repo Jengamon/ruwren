@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 use std::cell::RefCell;
 
+pub use wren_sys;
+
 use std::{mem, ffi, os::raw, any, marker};
 
 #[derive(Debug)]
@@ -282,12 +284,13 @@ macro_rules! create_module {
         $(
             mod $md {
                 use std::panic::{take_hook, set_hook, catch_unwind, AssertUnwindSafe};
-                pub(in super) extern "C" fn _constructor(vm: *mut wren_sys::WrenVM) {
+
+                pub(in super) extern "C" fn _constructor(vm: *mut $crate::wren_sys::WrenVM) {
                     use $crate::Class;
                     unsafe {
-                        let conf = &mut *(wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
+                        let conf = &mut *($crate::wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
                         let vm = std::rc::Weak::upgrade(&conf.vm).expect(&format!("Failed to access VM at {:p}", &conf.vm));
-                        let wptr = wren_sys::wrenSetSlotNewForeign(vm.borrow().vm, 0, 0, std::mem::size_of::<$crate::ForeignObject<$name>>() as wren_sys::size_t);
+                        let wptr = $crate::wren_sys::wrenSetSlotNewForeign(vm.borrow().vm, 0, 0, std::mem::size_of::<$crate::ForeignObject<$name>>() as $crate::wren_sys::size_t);
                         // Allocate a new object, and move it onto the heap
                         set_hook(Box::new(|_| {}));
                         let vm_borrow = AssertUnwindSafe(vm.borrow());
@@ -335,7 +338,7 @@ macro_rules! create_module {
             }
 
             impl $crate::ClassObject for $name {
-                fn initialize_pointer() -> extern "C" fn(*mut wren_sys::WrenVM) { $md::_constructor }
+                fn initialize_pointer() -> extern "C" fn(*mut $crate::wren_sys::WrenVM) { $md::_constructor }
                 fn finalize_pointer() -> extern "C" fn(*mut std::ffi::c_void) { $md::_destructor }
                 fn generate_pointers() -> $crate::ClassObjectPointers {
                     $crate::ClassObjectPointers {
@@ -390,10 +393,10 @@ macro_rules! create_module {
     };
 
     (@fn static $name:ty => $s:ident) => {
-        pub(in super) unsafe extern "C" fn $s(vm: *mut wren_sys::WrenVM) {
+        pub(in super) unsafe extern "C" fn $s(vm: *mut $crate::wren_sys::WrenVM) {
             use std::panic::{take_hook, set_hook, catch_unwind, AssertUnwindSafe};
 
-            let conf = &mut *(wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
+            let conf = &mut *($crate::wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
             let vm = std::rc::Weak::upgrade(&conf.vm).expect(&format!("Failed to access VM at {:p}", &conf.vm));
             set_hook(Box::new(|_| {}));
             let vm_borrow = AssertUnwindSafe(vm.borrow());
@@ -417,10 +420,10 @@ macro_rules! create_module {
     };
 
     (@fn instance $name:ty => $inf:ident) => {
-        pub(in super) unsafe extern "C" fn $inf(vm: *mut wren_sys::WrenVM) {
+        pub(in super) unsafe extern "C" fn $inf(vm: *mut $crate::wren_sys::WrenVM) {
             use std::panic::{take_hook, set_hook, catch_unwind, AssertUnwindSafe};
             
-            let conf = &mut *(wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
+            let conf = &mut *($crate::wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
             let vm = std::rc::Weak::upgrade(&conf.vm).expect(&format!("Failed to access VM at {:p}", &conf.vm));
             set_hook(Box::new(|_| {}));
             let vm_borrow = AssertUnwindSafe(vm.borrow());
