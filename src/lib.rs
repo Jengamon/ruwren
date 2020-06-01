@@ -17,6 +17,8 @@ pub enum WrenError {
 }
 
 // Force Wren to use Rust's allocator to allocate memory
+// Done because sometimes Wren forces us to allocate memory and give *it* ownership
+// Rust might not use the standard allocator, so we move Wren to use *our* allocator
 extern "C" fn wren_realloc(memory: *mut ffi::c_void, new_size: wren_sys::size_t) -> *mut ffi::c_void {
     unsafe {
         if memory == std::ptr::null_mut() { // If memory == NULL
@@ -110,7 +112,7 @@ extern "C" fn wren_load_module(vm: *mut WrenVM, name: *const raw::c_char) -> *mu
     let module_name = unsafe { ffi::CStr::from_ptr(name) };
     match conf.loader.load_script(module_name.to_string_lossy().to_string()) {
         Some(string) => {
-            ffi::CString::new(string).ok().map(|strg| strg.into_raw()).expect(&format!("Failed to convert source to C string for {}", module_name.to_string_lossy()))
+            ffi::CString::new(string).expect(&format!("Failed to convert source to C string for {}", module_name.to_string_lossy())).into_raw()
         },
         None => std::ptr::null_mut()
     }
@@ -124,7 +126,9 @@ extern "C" fn wren_canonicalize(_: *mut WrenVM, importer: *const raw::c_char, na
 
     if let Some('@') = _name.chars().nth(0) {
         let real_name: String = _name.chars().skip(1).collect();
-        format!("{}/{}", _importer, real_name).as_mut_ptr() as *mut _
+        ffi::CString::new(format!("{}/{}", _importer, real_name))
+            .expect(&format!("Failed to convert name {}/{} to C string", _importer, real_name))
+            .into_raw() as *const _
     } else {
         name
     }

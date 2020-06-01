@@ -66,7 +66,7 @@ create_module!(
     module => maths
 );
 
-static MATHS_MODULE_SRC: &'static str = include_str!("maths.wren");
+static MATHS_MODULE_SRC: &'static str = include_str!("basic_integration/maths.wren");
 
 fn main() {
     let mut lib = ModuleLibrary::new();
@@ -74,7 +74,7 @@ fn main() {
     let vm = VMConfig::new().library(&lib).build();
     vm.interpret("maths", MATHS_MODULE_SRC).unwrap(); // Should succeed
 
-    let res = vm.interpret("main", include_str!("basic_integration.wren"));
+    let res = vm.interpret("main", include_str!("basic_integration/main.wren"));
 
     if let Err(err) = res {
         eprintln!("{}", err);

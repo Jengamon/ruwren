@@ -43,7 +43,7 @@ fn main() {
     main::publish_module(&mut lib);
     let vm = VMConfig::new().library(&lib).build();
 
-    vm.interpret("main", include_str!("handles.wren")).unwrap(); // Should succeed
+    vm.interpret("main", include_str!("handles/main.wren")).unwrap(); // Should succeed
 
     vm.execute(|vm| {
         vm.ensure_slots(1);
