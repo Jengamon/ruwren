@@ -304,13 +304,12 @@ macro_rules! create_module {
             mod $md {
                 use std::panic::{take_hook, set_hook, catch_unwind, AssertUnwindSafe};
 
-                #[allow(unused_assignments)]
                 pub(in super) extern "C" fn _constructor(vm: *mut $crate::wren_sys::WrenVM) {
                     use $crate::Class;
                     unsafe {
                         let conf = &mut *($crate::wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
                         let vm = std::rc::Weak::upgrade(&conf.vm).expect(&format!("Failed to access VM at {:p}", &conf.vm));
-                        let mut wptr = $crate::wren_sys::wrenSetSlotNewForeign(vm.borrow().vm, 0, 0, std::mem::size_of::<$crate::ForeignObject<$name>>() as $crate::wren_sys::size_t);
+                        let wptr = $crate::wren_sys::wrenSetSlotNewForeign(vm.borrow().vm, 0, 0, std::mem::size_of::<$crate::ForeignObject<$name>>() as $crate::wren_sys::size_t);
                         // Allocate a new object, and move it onto the heap
                         set_hook(Box::new(|_| {}));
                         let vm_borrow = AssertUnwindSafe(vm.borrow());
