@@ -259,6 +259,7 @@ pub trait ClassObject: Class {
     fn generate_pointers() -> ClassObjectPointers;
 }
 
+#[derive(Debug, Copy, Clone)]
 pub struct ForeignObject<T> {
     pub object: *mut T,
     pub type_id: any::TypeId,
@@ -285,12 +286,13 @@ macro_rules! create_module {
             mod $md {
                 use std::panic::{take_hook, set_hook, catch_unwind, AssertUnwindSafe};
 
+                #[allow(unused_assignments)]
                 pub(in super) extern "C" fn _constructor(vm: *mut $crate::wren_sys::WrenVM) {
                     use $crate::Class;
                     unsafe {
                         let conf = &mut *($crate::wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
                         let vm = std::rc::Weak::upgrade(&conf.vm).expect(&format!("Failed to access VM at {:p}", &conf.vm));
-                        let wptr = $crate::wren_sys::wrenSetSlotNewForeign(vm.borrow().vm, 0, 0, std::mem::size_of::<$crate::ForeignObject<$name>>() as $crate::wren_sys::size_t);
+                        let mut wptr = $crate::wren_sys::wrenSetSlotNewForeign(vm.borrow().vm, 0, 0, std::mem::size_of::<$crate::ForeignObject<$name>>() as $crate::wren_sys::size_t);
                         // Allocate a new object, and move it onto the heap
                         set_hook(Box::new(|_| {}));
                         let vm_borrow = AssertUnwindSafe(vm.borrow());
@@ -313,18 +315,17 @@ macro_rules! create_module {
                         drop(take_hook());
                         // Copy the object pointer if we were successful
                         if let Some(object) = object {
-                            let new_obj = Box::new($crate::ForeignObject {
+                            std::ptr::write(wptr as *mut _, $crate::ForeignObject {
                                 object: Box::into_raw(Box::new(object)),
                                 type_id: std::any::TypeId::of::<$name>(),
                             });
-                            std::ptr::copy_nonoverlapping(Box::leak(new_obj), wptr as *mut _, 1);
                         }
                     }
                 }
 
                 pub(in super) extern "C" fn _destructor(data: *mut std::ffi::c_void) {
                     unsafe {
-                        let fo: &mut $crate::ForeignObject<$name> = &mut *(data as *mut $crate::ForeignObject<$name>);
+                        let mut fo: &mut $crate::ForeignObject<$name> = &mut *(data as *mut _);
                         if fo.object != std::ptr::null_mut() { // If we haven't dropped an object, work on dropping it.
                             drop(Box::from_raw(fo.object));
                             fo.object = std::ptr::null_mut();
@@ -359,7 +360,7 @@ macro_rules! create_module {
                 $(
                     .class::<$name, _>($mname)
                 )+;
-                lib.module(stringify!($modl), module);
+                lib.module(stringify!($modl).replace("_", "/"), module);
             }
         }
     };
@@ -430,7 +431,7 @@ macro_rules! create_module {
             match catch_unwind(|| {
                 vm_borrow.ensure_slots(1);
                 let inst = vm_borrow.get_slot_foreign_mut::<$name>(0)
-                    .expect(&format!("Tried to call {0} of {1:?} on non-{1:?} type", stringify!($inf), std::any::TypeId::of::<$name>()));
+                    .expect(&format!("Tried to call {0} of {1} on non-{1} type", stringify!($inf), std::any::type_name::<$name>()));
                 inst.$inf(&*vm_borrow)
             }) {
                 Ok(_) => (),
