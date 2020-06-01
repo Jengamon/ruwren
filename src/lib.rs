@@ -613,14 +613,6 @@ impl FunctionSignature {
             FunctionSignature::Setter(_) => 1,
         }
     }
-
-    pub fn name(&self) -> String {
-        match self {
-            FunctionSignature::Function { name, .. } => name.clone(),
-            FunctionSignature::Getter(name) => name.clone(),
-            FunctionSignature::Setter(name) => format!("{}=", name),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
