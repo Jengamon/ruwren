@@ -1067,7 +1067,7 @@ impl Drop for VM {
     fn drop(&mut self) {
         unsafe {
             let conf = wren_sys::wrenGetUserData(self.vm);
-            Box::from_raw(conf); // Drop the userdata
+            let _: Box<UserData> = Box::from_raw(conf as *mut _); // Drop the userdata
             wren_sys::wrenFreeVM(self.vm);
         }
     }
