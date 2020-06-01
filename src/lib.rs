@@ -116,6 +116,20 @@ extern "C" fn wren_load_module(vm: *mut WrenVM, name: *const raw::c_char) -> *mu
     }
 }
 
+extern "C" fn wren_canonicalize(_: *mut WrenVM, importer: *const raw::c_char, name: *const raw::c_char) -> *const raw::c_char {
+    let _importer = unsafe { ffi::CStr::from_ptr(importer) };
+    let _name = unsafe { ffi::CStr::from_ptr(name) };
+    let _importer = _importer.to_string_lossy();
+    let _name = _name.to_string_lossy();
+
+    if let Some('@') = _name.chars().nth(0) {
+        let real_name: String = _name.chars().skip(1).collect();
+        format!("{}/{}", _importer, real_name).as_mut_ptr() as *mut _
+    } else {
+        name
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum VMError {
     Compile {
@@ -712,6 +726,8 @@ pub struct VMConfig {
     initial_heap_size: usize,
     min_heap_size: usize,
     heap_growth_percent: usize,
+
+    enable_relative_import: bool, // Uses @module, to mean [module] loaded relative to this one
 }
 
 impl VMConfig {
@@ -723,6 +739,7 @@ impl VMConfig {
             initial_heap_size: 1024 * 1024 * 10,
             min_heap_size: 1024 * 1024,
             heap_growth_percent: 50,
+            enable_relative_import: false,
         }
     }
 
@@ -761,6 +778,11 @@ impl VMConfig {
         self
     }
 
+    pub fn enable_relative_import(mut self, eri: bool) -> Self {
+        self.enable_relative_import = eri;
+        self
+    }
+
     pub fn build(self) -> VMWrapper {
         let (etx, erx) = channel();
 
@@ -789,6 +811,11 @@ impl VMConfig {
             config.bindForeignMethodFn = Some(wren_bind_foreign_method);
             config.bindForeignClassFn = Some(wren_bind_foreign_class);
             config.loadModuleFn = Some(wren_load_module);
+            config.resolveModuleFn = if self.enable_relative_import {
+                Some(wren_canonicalize)
+            } else {
+                None
+            };
             config.initialHeapSize = self.initial_heap_size as wren_sys::size_t;
             config.minHeapSize = self.min_heap_size as wren_sys::size_t;
             config.heapGrowthPercent = self.heap_growth_percent as raw::c_int;
