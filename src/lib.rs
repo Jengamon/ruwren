@@ -527,7 +527,7 @@ pub trait ModuleScriptLoader {
     fn load_script(&mut self, name: String) -> Option<String>;
 }
 
-pub type EVM = Rc<RefCell<VM>>;
+type EVM = Rc<RefCell<VM>>;
 
 pub trait Printer {
     fn print(&mut self, s: String);
