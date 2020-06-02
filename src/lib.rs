@@ -268,13 +268,13 @@ impl Module {
 
 // Trait that all Wren "class" objects implement
 pub trait Class {
-    fn initialize(_: &VM) -> Self;
+    fn initialize(_: &VM) -> Self where Self: Sized;
 }
 
 pub trait ClassObject: Class {
-    fn initialize_pointer() -> extern "C" fn(*mut WrenVM);
-    fn finalize_pointer() -> extern "C" fn(*mut ffi::c_void);
-    fn generate_pointers() -> ClassObjectPointers;
+    fn initialize_pointer() -> extern "C" fn(*mut WrenVM) where Self: Sized;
+    fn finalize_pointer() -> extern "C" fn(*mut ffi::c_void) where Self: Sized;
+    fn generate_pointers() -> ClassObjectPointers where Self: Sized;
 }
 
 #[derive(Debug, Copy, Clone)]
