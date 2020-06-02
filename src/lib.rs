@@ -503,6 +503,26 @@ macro_rules! get_slot_checked {
             $vm.get_slot_bytes($slot).unwrap()
         }
     };
+
+    ($vm:expr => foreign $t:ty => $slot:expr) => {
+        {
+            if $vm.get_slot_type($slot) != $crate::SlotType::Foreign { panic!("rust error [{}:{}]: Slot {} is not a <foreign>", file!(), line!(), $slot)}
+            match $vm.get_slot_foreign::<$t>($slot) {
+                Some(ty) => ty,
+                None => panic!("rust error [{}:{}]: Slot {} is not a foreign of type {}", file!(), line!(), $slot, std::any::type_name::<$t>())
+            }
+        }
+    };
+
+    ($vm:expr => foreign_mut $t:ty => $slot:expr) => {
+        {
+            if $vm.get_slot_type($slot) != $crate::SlotType::Foreign { panic!("rust error [{}:{}]: Slot {} is not a <foreign>", file!(), line!(), $slot)}
+            match $vm.get_slot_foreign_mut::<$t>($slot) {
+                Some(ty) => ty,
+                None => panic!("rust error [{}:{}]: Slot {} is not a foreign of type {}", file!(), line!(), $slot, std::any::type_name::<$t>())
+            }
+        }
+    };
 }
 
 pub fn type_name_of<T>(_: T) -> &'static str {
