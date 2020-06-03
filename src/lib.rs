@@ -525,7 +525,7 @@ macro_rules! get_slot_checked {
     };
 }
 
-pub fn type_name_of<T>(_: T) -> &'static str {
+pub fn type_name_of<T>(_: &T) -> &'static str {
     any::type_name::<T>()
 }
 
@@ -534,8 +534,9 @@ pub fn type_name_of<T>(_: T) -> &'static str {
 macro_rules! send_foreign {
     ($vm:expr, $modl:expr, $class:expr, $obj:expr => $slot:expr) => {
         {
+            let obj_name = $crate::type_name_of(&$obj);
             if $vm.set_slot_new_foreign($modl, $class, $obj, $slot).is_none() {
-                panic!("rust error [{}:{}]: Could not send type {:?} as [{}] {}", file!(), line!(), $crate::type_name_of($obj), $modl, $class);
+                panic!("rust error [{}:{}]: Could not send type {:?} as [{}] {}", file!(), line!(), obj_name, $modl, $class);
             }
         }
     }
