@@ -535,8 +535,9 @@ macro_rules! send_foreign {
     ($vm:expr, $modl:expr, $class:expr, $obj:expr => $slot:expr) => {
         {
             let obj_name = $crate::type_name_of(&$obj);
-            if $vm.set_slot_new_foreign($modl, $class, $obj, $slot).is_none() {
-                panic!("rust error [{}:{}]: Could not send type {:?} as [{}] {}", file!(), line!(), obj_name, $modl, $class);
+            match $vm.set_slot_new_foreign($modl, $class, $obj, $slot) {
+                Err(e) => panic!("rust error [{}:{}]: Could not send type {:?} as [{}] {}: {}", file!(), line!(), obj_name, $modl, $class, e),
+                Ok(rf) => rf
             }
         }
     }
@@ -846,6 +847,28 @@ impl VMConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForeignSendError {
+    NoForeignClass,
+    NoWrenClass,
+    NoMemory,
+    ClassMismatch,
+
+}
+
+impl std::fmt::Display for ForeignSendError {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            ForeignSendError::NoForeignClass => write!(fmt, "no foreign class"),
+            ForeignSendError::NoWrenClass => write!(fmt, "no Wren class"),
+            ForeignSendError::NoMemory => write!(fmt, "unable to allocate memory"),
+            ForeignSendError::ClassMismatch => write!(fmt, "class mismatch"),
+        }
+    }
+}
+
+impl std::error::Error for ForeignSendError {}
+
 // TODO Expose more VM configuration (initalHeap, maxHeap, etc.)
 impl VM {
     // Slot and Handle API
@@ -1027,13 +1050,15 @@ impl VM {
     /// Looks up the specifed [module] for the specified [class]
     /// If it's type matches with type T, will create a new instance in [slot]
     /// WARNING: This *will* overwrite slot 0, so be careful.
-    pub fn set_slot_new_foreign<M: AsRef<str>, C: AsRef<str>, T: 'static + ClassObject>(&self, module: M, class: C, object: T, slot: SlotId) -> Option<&mut T> {
+    pub fn set_slot_new_foreign<M: AsRef<str>, C: AsRef<str>, T: 'static + ClassObject>(&self, module: M, class: C, object: T, slot: SlotId) 
+        -> Result<&mut T, ForeignSendError> 
+    {
         let conf = unsafe { &mut *(wren_sys::wrenGetUserData(self.vm) as *mut UserData) };
 
         self.ensure_slots((slot + 1) as usize);
         // Even if slot == 0, we can just load the class into slot 0, then use wrenSetSlotNewForeign to "create" a new object
         match conf.library.as_ref().and_then(|lib| lib.get_foreign_class(module.as_ref(), class.as_ref())) {
-            None => None, // Couldn't find the corresponding class
+            None => Err(ForeignSendError::NoForeignClass), // Couldn't find the corresponding class
             Some(runtime_class) => {
                 if runtime_class.type_id == any::TypeId::of::<T>() {
                     // The Wren foreign class corresponds with this real object.
@@ -1050,7 +1075,7 @@ impl VM {
 
                     // Make sure the class isn't null (undeclared in Wren code)
                     match self.get_slot_type(0) {
-                        SlotType::Null => None, // You haven't declared the foreign class to Wren
+                        SlotType::Null => Err(ForeignSendError::NoWrenClass), // You haven't declared the foreign class to Wren
                         SlotType::Unknown => unsafe { // A Wren class
                             // Create the Wren foreign pointer
                             let wptr = wren_sys::wrenSetSlotNewForeign(self.vm, slot as raw::c_int, 0, mem::size_of::<ForeignObject<T>>() as wren_sys::size_t);
@@ -1059,13 +1084,16 @@ impl VM {
                             std::ptr::write(wptr as *mut _, new_obj);
 
                             // Reinterpret the pointer as an object if we were successful
-                            (wptr as *mut T).as_mut()
+                            match (wptr as *mut T).as_mut() {
+                                Some(ptr) => Ok(ptr),
+                                None => Err(ForeignSendError::NoMemory)
+                            }
                         },
-                        _ => None
+                        _ => Err(ForeignSendError::NoWrenClass)
                     }
                 } else {
                     // The classes do not match. Avoid.
-                    None
+                    Err(ForeignSendError::ClassMismatch)
                 }
             }
         }
@@ -1147,7 +1175,7 @@ mod tests {
             let send = vm.set_slot_new_foreign("main", "RawPoint", Point {
                 x: 345.7
             }, 0);
-            if send.is_none() {
+            if send.is_err() {
                 panic!("Could not send RawPoint object");
             }
         }
