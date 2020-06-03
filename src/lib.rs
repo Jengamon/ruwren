@@ -209,8 +209,8 @@ impl ModuleLibrary {
         }
     }
 
-    pub fn module<N: AsRef<str>>(&mut self, name: N, modl: Module) {
-        self.modules.insert(name.as_ref().to_string(), modl);
+    pub fn module<N: Into<String>>(&mut self, name: N, modl: Module) {
+        self.modules.insert(name.into(), modl);
     }
 
     fn get_foreign_class<M: AsRef<str>, C: AsRef<str>>(&self, module: M, class: C) -> Option<&RuntimeClass> {
@@ -252,11 +252,11 @@ impl Module {
         }
     }
 
-    pub fn class<C: 'static + ClassObject, S: AsRef<str>>(&mut self, name: S) -> &mut Self {
+    pub fn class<C: 'static + ClassObject, S: Into<String>>(&mut self, name: S) -> &mut Self {
         let cp = C::generate_pointers();
         let init = C::initialize_pointer();
         let deinit = C::finalize_pointer();
-        self.classes.insert(name.as_ref().to_string(), RuntimeClass {
+        self.classes.insert(name.into(), RuntimeClass {
             construct: init,
             destruct: deinit,
             methods: cp,
@@ -605,19 +605,19 @@ pub enum FunctionSignature {
 }
 
 impl FunctionSignature {
-    pub fn new_function<N: AsRef<str>>(name: N, arity: usize) -> FunctionSignature {
+    pub fn new_function<N: Into<String>>(name: N, arity: usize) -> FunctionSignature {
         FunctionSignature::Function {
-            name: name.as_ref().to_string(),
+            name: name.into(),
             arity
         }
     }
 
-    pub fn new_getter<N: AsRef<str>>(name: N) -> FunctionSignature {
-        FunctionSignature::Getter(name.as_ref().to_string())
+    pub fn new_getter<N: Into<String>>(name: N) -> FunctionSignature {
+        FunctionSignature::Getter(name.into())
     }
 
-    pub fn new_setter<N: AsRef<str>>(name: N) -> FunctionSignature {
-        FunctionSignature::Setter(name.as_ref().to_string())
+    pub fn new_setter<N: Into<String>>(name: N) -> FunctionSignature {
+        FunctionSignature::Setter(name.into())
     }
 
     fn as_wren_string(&self) -> String {
