@@ -1047,15 +1047,20 @@ impl VM {
                     // Load the Wren class object into slot 0.
                     self.get_variable(module, class, 0);
 
-                    unsafe {
-                        // Create the Wren foreign pointer
-                        let wptr = wren_sys::wrenSetSlotNewForeign(self.vm, slot as raw::c_int, 0, mem::size_of::<ForeignObject<T>>() as wren_sys::size_t);
+                    // Make sure the class isn't null (undeclared in Wren code)
+                    match self.get_slot_type(0) {
+                        SlotType::Null => None, // You haven't declared the foreign class to Wren
+                        SlotType::Unknown => unsafe { // A Wren class
+                            // Create the Wren foreign pointer
+                            let wptr = wren_sys::wrenSetSlotNewForeign(self.vm, slot as raw::c_int, 0, mem::size_of::<ForeignObject<T>>() as wren_sys::size_t);
 
-                        // Move the ForeignObject into the pointer
-                        std::ptr::write(wptr as *mut _, new_obj);
+                            // Move the ForeignObject into the pointer
+                            std::ptr::write(wptr as *mut _, new_obj);
 
-                        // Reinterpret the pointer as an object if we were successful
-                        (wptr as *mut T).as_mut()
+                            // Reinterpret the pointer as an object if we were successful
+                            (wptr as *mut T).as_mut()
+                        },
+                        _ => None
                     }
                 } else {
                     // The classes do not match. Avoid.
