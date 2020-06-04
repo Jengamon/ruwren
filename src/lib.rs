@@ -24,7 +24,7 @@ pub enum WrenError {
 // Rust might not use the standard allocator, so we move Wren to use *our* allocator
 extern "C" fn wren_realloc(memory: *mut ffi::c_void, new_size: wren_sys::size_t) -> *mut ffi::c_void {
     unsafe {
-        if memory == std::ptr::null_mut() { // If memory == NULL
+        if memory.is_null() { // If memory == NULL
             // allocate new memory
             std::alloc::alloc_zeroed(std::alloc::Layout::from_size_align(new_size as usize, 8).unwrap()) as *mut _
         } else {
@@ -75,11 +75,7 @@ extern "C" fn wren_bind_foreign_method(vm: *mut WrenVM, mdl: *const raw::c_char,
     if let Some(ref library) = conf.library {
         if let Some(rc) = library.get_foreign_class(module.to_string_lossy(), class.to_string_lossy()) {
             rc.methods.function_pointers.iter().find(|mp| {
-                if mp.signature.as_wren_string() == signature.to_string_lossy() && mp.is_static == is_static {
-                    true
-                } else {
-                    false
-                }
+                mp.signature.as_wren_string() == signature.to_string_lossy() && mp.is_static == is_static
             }).map(|mp| mp.pointer)
         } else {
             None
@@ -115,7 +111,7 @@ extern "C" fn wren_load_module(vm: *mut WrenVM, name: *const raw::c_char) -> *mu
     let module_name = unsafe { ffi::CStr::from_ptr(name) };
     match conf.loader.load_script(module_name.to_string_lossy().to_string()) {
         Some(string) => {
-            ffi::CString::new(string).expect(&format!("Failed to convert source to C string for {}", module_name.to_string_lossy())).into_raw()
+            ffi::CString::new(string).unwrap_or_else(|_| panic!("Failed to convert source to C string for {}", module_name.to_string_lossy())).into_raw()
         },
         None => std::ptr::null_mut()
     }
@@ -127,10 +123,10 @@ extern "C" fn wren_canonicalize(_: *mut WrenVM, importer: *const raw::c_char, na
     let _importer = _importer.to_string_lossy();
     let _name = _name.to_string_lossy();
 
-    if let Some('@') = _name.chars().nth(0) {
+    if let Some('@') = _name.chars().next() {
         let real_name: String = _name.chars().skip(1).collect();
         ffi::CString::new(format!("{}/{}", _importer, real_name))
-            .expect(&format!("Failed to convert name {}/{} to C string", _importer, real_name))
+            .unwrap_or_else(|_| panic!("Failed to convert name {}/{} to C string", _importer, real_name))
             .into_raw() as *const _
     } else {
         name
@@ -200,7 +196,7 @@ impl<'a> Drop for Handle<'a> {
 pub struct FunctionHandle<'a>(Handle<'a>);
 
 /// Simulates a module structure for foreign functions
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ModuleLibrary {
     modules: HashMap<String, Module>,
 }
@@ -231,7 +227,7 @@ struct RuntimeClass {
     type_id: any::TypeId,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Module {
     classes: HashMap<String, RuntimeClass>,
 }
@@ -626,7 +622,7 @@ impl FunctionSignature {
     fn as_wren_string(&self) -> String {
         match self {
             FunctionSignature::Function { name, arity } => format!("{}({})", name, vec!["_".to_string(); *arity].join(",")),
-            FunctionSignature::Getter(name) => format!("{}", name),
+            FunctionSignature::Getter(name) => name.clone(),
             FunctionSignature::Setter(name) => format!("{}=(_)", name),
         }
     }
@@ -749,6 +745,12 @@ pub struct VMConfig {
     heap_growth_percent: usize,
 
     enable_relative_import: bool, // Uses @module, to mean [module] loaded relative to this one
+}
+
+impl Default for VMConfig {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl VMConfig {
@@ -1035,7 +1037,7 @@ impl VM {
     pub fn get_slot_foreign_mut<T: 'static + ClassObject>(&self, slot: SlotId) -> Option<&mut T> {
         unsafe {
             let ptr = wren_sys::wrenGetSlotForeign(self.vm, slot as raw::c_int);
-            if ptr != std::ptr::null_mut() {
+            if !ptr.is_null() {
                 let fo = &mut *(ptr as *mut ForeignObject<T>);
                 if fo.type_id == any::TypeId::of::<T>() {
                     // Safe to downcast
