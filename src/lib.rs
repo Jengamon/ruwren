@@ -342,7 +342,7 @@ macro_rules! create_module {
                 pub(in super) extern "C" fn _destructor(data: *mut std::ffi::c_void) {
                     unsafe {
                         let mut fo: &mut $crate::ForeignObject<$name> = &mut *(data as *mut _);
-                        if fo.object != std::ptr::null_mut() { // If we haven't dropped an object, work on dropping it.
+                        if !fo.object.is_null() { // If we haven't dropped an object, work on dropping it.
                             drop(Box::from_raw(fo.object));
                             fo.object = std::ptr::null_mut();
                         }
