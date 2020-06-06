@@ -542,15 +542,27 @@ macro_rules! send_foreign {
     }
 }
 
-/// Enables one to plug-in a module loader for Wren
+/// Enables one to enable module loading for Wren
 pub trait ModuleScriptLoader {
     fn load_script(&mut self, name: String) -> Option<String>;
+}
+
+impl<T> ModuleScriptLoader for T where T: FnMut(String) -> Option<String> {
+    fn load_script(&mut self, name: String) -> Option<String> {
+        (*self)(name)
+    }
 }
 
 type EVM = Rc<RefCell<VM>>;
 
 pub trait Printer {
     fn print(&mut self, s: String);
+}
+
+impl<T> Printer for T where T: FnMut(String) {
+    fn print(&mut self, s: String) {
+        (*self)(s)
+    }
 }
 
 struct PrintlnPrinter;
