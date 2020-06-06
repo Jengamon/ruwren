@@ -12,7 +12,7 @@ It acts at times pretty transparently (you do have to deal with the slot / forei
 Just add:
 
 ```toml
-ruwren = "0.2"
+ruwren = "0.3"
 ```
 
 to your Cargo.toml.
