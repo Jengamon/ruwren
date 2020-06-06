@@ -67,7 +67,7 @@ vm.execute(|vm| {
     vm.get_variable("main", "GameEngine", 0);
     vm.set_slot_double(0, 0.016);
 });
-vm.call_handle(FunctionSignature::new_function("update", 1));
+vm.call(FunctionSignature::new_function("update", 1));
 ```
 
 ## Embedding Rust code in Wren
