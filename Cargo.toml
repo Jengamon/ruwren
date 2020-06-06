@@ -14,3 +14,10 @@ readme = "README.md"
 
 [dependencies]
 ruwren-sys = "0.3"
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "embed_bench"
+harness = false
