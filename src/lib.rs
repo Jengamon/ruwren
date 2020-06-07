@@ -716,7 +716,7 @@ impl VMWrapper {
         }
     }
 
-    pub fn execute<T, F>(&self, mut f: F) -> T where F: FnMut(&VM) -> T {
+    pub fn execute<T, F>(&self, f: F) -> T where F: FnOnce(&VM) -> T {
         f(&self.0.borrow())
     }
 
