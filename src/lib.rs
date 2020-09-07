@@ -886,7 +886,6 @@ impl std::fmt::Display for ForeignSendError {
 
 impl std::error::Error for ForeignSendError {}
 
-// TODO Expose more VM configuration (initalHeap, maxHeap, etc.)
 impl VM {
     // Slot and Handle API
     pub fn ensure_slots(&self, count: usize) {
@@ -1066,6 +1065,7 @@ impl VM {
 
     /// Looks up the specifed [module] for the specified [class]
     /// If it's type matches with type T, will create a new instance in [slot]
+    ///  
     /// WARNING: This *will* overwrite slot 0, so be careful.
     pub fn set_slot_new_foreign<M: AsRef<str>, C: AsRef<str>, T: 'static + ClassObject>(&self, module: M, class: C, object: T, slot: SlotId) 
         -> Result<&mut T, ForeignSendError> 
@@ -1101,8 +1101,8 @@ impl VM {
                             std::ptr::write(wptr as *mut _, new_obj);
 
                             // Reinterpret the pointer as an object if we were successful
-                            match (wptr as *mut T).as_mut() {
-                                Some(ptr) => Ok(ptr),
+                            match (wptr as *mut ForeignObject<T>).as_mut() {
+                                Some(ptr) => Ok(ptr.object.as_mut().unwrap()),
                                 None => Err(ForeignSendError::NoMemory)
                             }
                         },
