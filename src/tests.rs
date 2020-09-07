@@ -11,14 +11,12 @@ impl Point {
     }
 
     fn set_x(&mut self, vm: &super::VM) {
-        vm.ensure_slots(2);
         self.x = get_slot_checked!(vm => num 1);
     }
 }
 
 impl super::Class for Point {
     fn initialize(vm: &super::VM) -> Point {
-        vm.ensure_slots(2);
         let x = get_slot_checked!(vm => num 1);
         Point {
             x,
