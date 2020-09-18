@@ -47,8 +47,9 @@ class GameEngine {
 "##).unwrap();
 let handle = vm.make_call_handle(FunctionSignature::new_function("update", 1));
 vm.execute(|vm| {
+    vm.ensure_slots(2);
     vm.get_variable("main", "GameEngine", 0);
-    vm.set_slot_double(0, 0.016);
+    vm.set_slot_double(1, 0.016);
 });
 vm.call_handle(&handle);
 ```
@@ -64,8 +65,9 @@ class GameEngine {
 }
 "##).unwrap();
 vm.execute(|vm| {
+    vm.ensure_slots(2);
     vm.get_variable("main", "GameEngine", 0);
-    vm.set_slot_double(0, 0.016);
+    vm.set_slot_double(1, 0.016);
 });
 vm.call(FunctionSignature::new_function("update", 1));
 ```
