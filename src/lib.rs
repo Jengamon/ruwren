@@ -788,30 +788,35 @@ impl VM {
     }
 
     pub fn set_slot_bool(&self, slot: SlotId, val: bool) {
+        self.ensure_slots(slot + 1);
         unsafe {
             wren_sys::wrenSetSlotBool(self.vm, slot as raw::c_int, val)
         }
     }
 
     pub fn set_slot_double(&self, slot: SlotId, val: f64) {
+        self.ensure_slots(slot + 1);
         unsafe {
             wren_sys::wrenSetSlotDouble(self.vm, slot as raw::c_int, val)
         }
     }
 
     pub fn set_slot_null(&self, slot: SlotId) {
+        self.ensure_slots(slot + 1);
         unsafe {
             wren_sys::wrenSetSlotNull(self.vm, slot as raw::c_int)
         }
     }
 
     pub fn set_slot_bytes(&self, slot: SlotId, bytes: &[u8]) {
+        self.ensure_slots(slot + 1);
         unsafe {
             wren_sys::wrenSetSlotBytes(self.vm, slot as raw::c_int, bytes as *const _ as *const raw::c_char, bytes.len() as wren_sys::size_t);
         }
     }
 
     pub fn set_slot_string<S: AsRef<str>>(&self, slot: SlotId, string: S) {
+        self.ensure_slots(slot + 1);
         let string = string.as_ref();
         unsafe {
             wren_sys::wrenSetSlotBytes(self.vm, slot as raw::c_int, string.as_ptr() as *const _, string.len() as wren_sys::size_t);
@@ -819,6 +824,7 @@ impl VM {
     }
 
     pub fn get_slot_bool(&self, slot: SlotId) -> Option<bool> {
+        self.ensure_slots(slot + 1);
         if self.get_slot_type(slot) != SlotType::Bool {
             None
         } else {
@@ -829,6 +835,7 @@ impl VM {
     }
 
     pub fn get_slot_double(&self, slot: SlotId) -> Option<f64> {
+        self.ensure_slots(slot + 1);
         if self.get_slot_type(slot) != SlotType::Num {
             None
         } else {
@@ -839,6 +846,7 @@ impl VM {
     }
 
     pub fn get_slot_bytes(&self, slot: SlotId) -> Option<Vec<u8>> {
+        self.ensure_slots(slot + 1);
         if self.get_slot_type(slot) != SlotType::String {
             None
         } else {
@@ -860,6 +868,7 @@ impl VM {
     }
 
     pub fn get_slot_string(&self, slot: SlotId) -> Option<String> {
+        self.ensure_slots(slot + 1);
         if self.get_slot_type(slot) != SlotType::String {
             None
         } else {
@@ -874,6 +883,7 @@ impl VM {
     }
 
     pub fn get_slot_type(&self, slot: SlotId) -> SlotType {
+        self.ensure_slots(slot + 1);
         match unsafe { wren_sys::wrenGetSlotType(self.vm, slot as raw::c_int) } {
             wren_sys::WrenType_WREN_TYPE_NUM => SlotType::Num,
             wren_sys::WrenType_WREN_TYPE_BOOL => SlotType::Bool,
@@ -887,6 +897,7 @@ impl VM {
     }
 
     pub fn get_variable<M: AsRef<str>, N: AsRef<str>>(&self, module: M, name: N, slot: SlotId) {
+        self.ensure_slots(slot + 1);
         let module = ffi::CString::new(module.as_ref()).expect("module name conversion failed");
         let name = ffi::CString::new(name.as_ref()).expect("variable name conversion failed");
         unsafe {
@@ -895,12 +906,15 @@ impl VM {
     }
 
     pub fn set_slot_new_list(&self, slot: SlotId) {
+        self.ensure_slots(slot + 1);
         unsafe {
             wren_sys::wrenSetSlotNewList(self.vm, slot as raw::c_int)
         }
     }
 
     pub fn insert_in_list(&self, list_slot: SlotId, index: i32, element_slot: SlotId) {
+        self.ensure_slots(element_slot + 1);
+        self.ensure_slots(list_slot + 1);
         unsafe {
             wren_sys::wrenInsertInList(
                 self.vm, 
@@ -912,6 +926,8 @@ impl VM {
     }
 
     pub fn get_list_element(&self, list_slot: SlotId, index: i32, element_slot: SlotId) {
+        self.ensure_slots(element_slot + 1);
+        self.ensure_slots(list_slot + 1);
         unsafe {
             wren_sys::wrenGetListElement(
                 self.vm, 
@@ -923,16 +939,19 @@ impl VM {
     }
 
     pub fn get_list_count(&self, slot: SlotId) -> usize {
+        self.ensure_slots(slot + 1);
         unsafe {
             wren_sys::wrenGetListCount(self.vm, slot as raw::c_int) as usize
         }
     }
 
     pub fn get_slot_foreign<T: 'static + ClassObject>(&self, slot: SlotId) -> Option<&T> {
+        self.ensure_slots(slot + 1);
         self.get_slot_foreign_mut(slot).map(|mr| &*mr)
     }
 
     pub fn get_slot_foreign_mut<T: 'static + ClassObject>(&self, slot: SlotId) -> Option<&mut T> {
+        self.ensure_slots(slot + 1);
         unsafe {
             let ptr = wren_sys::wrenGetSlotForeign(self.vm, slot as raw::c_int);
             if !ptr.is_null() {
@@ -957,6 +976,7 @@ impl VM {
     pub fn set_slot_new_foreign<M: AsRef<str>, C: AsRef<str>, T: 'static + ClassObject>(&self, module: M, class: C, object: T, slot: SlotId) 
         -> Result<&mut T, ForeignSendError> 
     {
+        self.ensure_slots(slot + 1);
         let conf = unsafe { &mut *(wren_sys::wrenGetUserData(self.vm) as *mut UserData) };
 
         self.ensure_slots((slot + 1) as usize);
