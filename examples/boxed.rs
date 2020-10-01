@@ -1,5 +1,19 @@
 use ruwren::{VMConfig, VM, Class, ModuleLibrary, FunctionSignature, create_module, get_slot_checked, send_foreign};
 
+struct BoxxWrapper(Box<dyn Boxx>);
+
+impl Class for BoxxWrapper {
+  fn initialize(_: &VM) -> BoxxWrapper {
+    unreachable!()
+  }
+}
+
+impl BoxxWrapper {
+  fn flipp(&self, vm: &VM) {
+    vm.set_slot_double(0, self.0.flipp() as f64);
+  }
+}
+
 trait Boxx {
   fn flipp(&self) -> u32;
 }
@@ -28,6 +42,10 @@ impl Bonafide {
   fn send_box(&self, vm: &VM) {
     send_foreign!(vm, "boxed", "DynBoxx", Box::new(self.clone()) as Box<dyn Boxx> => 0);
   }
+
+  fn send_wrapped(&self, vm: &VM) {
+    send_foreign!(vm, "boxed", "DynBoxxWrapped", BoxxWrapper(Box::new(self.clone())) => 0);
+  }
 }
 
 impl Boxx for Bonafide {
@@ -36,10 +54,15 @@ impl Boxx for Bonafide {
 
 create_module! {
   class("Bonafide") crate::Bonafide => bonafide {
-    instance(getter "box") send_box
+    instance(getter "box") send_box,
+    instance(getter "wrap") send_wrapped
   }
 
   class("DynBoxx") Box<dyn crate::Boxx> => boxx {
+  }
+
+  class("DynBoxxWrapped") crate::BoxxWrapper => boxxwrap {
+    instance(getter "flipp") flipp
   }
 
   module => boxed
