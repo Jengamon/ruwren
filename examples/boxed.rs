@@ -72,28 +72,28 @@ const BONAFIDE_MODULE_SRC: &'static str = include_str!("boxed/bonafide.wren");
 
 fn main() {
   let mut lib = ModuleLibrary::new();
-    boxed::publish_module(&mut lib);
-    let vm = VMConfig::new().library(&lib).build();
-    vm.interpret("boxed", BONAFIDE_MODULE_SRC).unwrap(); // Should succeed
+  boxed::publish_module(&mut lib);
+  let vm = VMConfig::new().library(&lib).build();
+  vm.interpret("boxed", BONAFIDE_MODULE_SRC).unwrap(); // Should succeed
 
-    let res = vm.interpret("main", include_str!("boxed/main.wren"));
-    if let Err(err) = res {
-        eprintln!("Load error: {}", err);
-        return;
-    }
+  let res = vm.interpret("main", include_str!("boxed/main.wren"));
+  if let Err(err) = res {
+      eprintln!("Load error: {}", err);
+      return;
+  }
 
+  vm.execute(|vm| {
+    vm.get_variable("main", "BoxedTest", 0);
+  });
+
+  let res = vm.call(FunctionSignature::new_getter("main"));
+
+  if let Err(err) = res {
+      eprintln!("{}", err);
+  } else {
     vm.execute(|vm| {
-      vm.get_variable("main", "BoxedTest", 0);
-    });
-
-    let res = vm.call(FunctionSignature::new_getter("main"));
-
-    if let Err(err) = res {
-        eprintln!("{}", err);
-    } else {
-      vm.execute(|vm| {
-        let f = get_slot_checked!(vm => foreign Box<dyn crate::Boxx> => 0);
-        println!("boxed> {}", f.flipp());
-      })
-    }
+      let f = get_slot_checked!(vm => foreign Box<dyn crate::Boxx> => 0);
+      println!("boxed> {}", f.flipp());
+    })
+  }
 }
