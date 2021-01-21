@@ -14,6 +14,7 @@ mod tests;
 mod runtime;
 
 #[derive(Debug)]
+/// Directly used by [`wren_error`](crate::runtime::wren_error) to report errors
 pub enum WrenError {
     Compile(String, i32, String),
     Runtime(String),
@@ -21,6 +22,7 @@ pub enum WrenError {
 }
 
 #[derive(Debug, Clone)]
+/// Possible errors for a Wren script
 pub enum VMError {
     Compile {
         module: String,
@@ -89,22 +91,26 @@ pub struct ModuleLibrary {
 }
 
 impl ModuleLibrary {
+    /// Creates a new library
     pub fn new() -> ModuleLibrary {
         ModuleLibrary {
             modules: HashMap::new()
         }
     }
 
+    /// Adds a [`Module`] with a specified `name`
     pub fn module<N: Into<String>>(&mut self, name: N, modl: Module) {
         self.modules.insert(name.into(), modl);
     }
 
+    /// Attempts to find a [`RuntimeClass`] given a `module` name and a `class` name
     fn get_foreign_class<M: AsRef<str>, C: AsRef<str>>(&self, module: M, class: C) -> Option<&RuntimeClass> {
         self.modules.get(module.as_ref()).and_then(|md| md.classes.get(class.as_ref()))
     }
 }
 
 #[derive(Debug, Clone)]
+/// Represetnation of classes at runtime
 struct RuntimeClass {
     construct: extern "C" fn(*mut WrenVM),
     destruct: extern "C" fn(*mut ffi::c_void),
@@ -115,11 +121,13 @@ struct RuntimeClass {
 }
 
 #[derive(Debug, Clone, Default)]
+/// A container for [`RuntimeClass`]es
 pub struct Module {
     classes: HashMap<String, RuntimeClass>,
 }
 
 #[derive(Debug, Clone)]
+/// List of [`MethodPointer`]s that make up the methods of a ['RuntimeClass`]
 pub struct ClassObjectPointers {
     pub function_pointers: Vec<MethodPointer>,
 }
@@ -132,12 +140,14 @@ pub struct MethodPointer {
 }
 
 impl Module {
+    /// Create a new module
     pub fn new() -> Module {
         Module {
             classes: HashMap::new()
         }
     }
 
+    /// Add class `C` to this module with a `name`
     pub fn class<C: 'static + ClassObject, S: Into<String>>(&mut self, name: S) -> &mut Self {
         let cp = C::generate_pointers();
         let init = C::initialize_pointer();
@@ -152,11 +162,12 @@ impl Module {
     }
 }
 
-// Trait that all Wren "class" objects implement
+/// Initialize function for Wren classes
 pub trait Class {
     fn initialize(_: &VM) -> Self where Self: Sized;
 }
 
+/// Indicates a "real" Wren class, and must be implemented to be added to a [`Module`]
 pub trait ClassObject: Class {
     fn initialize_pointer() -> extern "C" fn(*mut WrenVM) where Self: Sized;
     fn finalize_pointer() -> extern "C" fn(*mut ffi::c_void) where Self: Sized;
@@ -164,15 +175,20 @@ pub trait ClassObject: Class {
 }
 
 #[derive(Debug, Copy, Clone)]
+/// Indicates a "foreign object" to Wren
 pub struct ForeignObject<T> {
     pub object: *mut T,
     pub type_id: any::TypeId,
 }
 
-/// Creates a function at $modl::publish_module, that takes a &mut ModuleLibrary
-/// and handles Module object creation and registration
+/// Creates a Wren module
+///
+/// Creates a function at $modl::publish_module, that takes a `&mut `[`ModuleLibrary`]
+/// and handles [`Module`] object creation and registration
 /// 
 /// Also internally creates all the necessary extern "C" functions for Wren's callbacks
+///
+/// See examples forlder for the syntax
 #[macro_export]
 macro_rules! create_module {
     (
@@ -415,7 +431,7 @@ pub fn type_name_of<T>(_: &T) -> &'static str {
     any::type_name::<T>()
 }
 
-/// Sends a foreign object [$obj] as an object of [$class] in module [$modl] to slot [$slot]
+/// Sends a foreign object `$obj` as an object of `$class` in module `$modl` to slot `$slot`
 #[macro_export]
 macro_rules! send_foreign {
     ($vm:expr, $modl:expr, $class:expr, $obj:expr => $slot:expr) => {
@@ -431,6 +447,11 @@ macro_rules! send_foreign {
 
 /// Enables one to enable module loading for Wren
 pub trait ModuleScriptLoader {
+    /// Takes a desired module `name`
+    ///
+    /// ### Returns
+    /// - `Some(String)` containing the Wren source if the module exists
+    /// - `None` if not 
     fn load_script(&mut self, name: String) -> Option<String>;
 }
 
@@ -442,7 +463,9 @@ impl<T> ModuleScriptLoader for T where T: FnMut(String) -> Option<String> {
 
 type EVM = Rc<RefCell<VM>>;
 
+/// Sends strings for printing to an output
 pub trait Printer {
+    /// Called whenever a string is to be sent to output
     fn print(&mut self, s: String);
 }
 
@@ -643,7 +666,8 @@ pub struct VMConfig {
     min_heap_size: usize,
     heap_growth_percent: usize,
 
-    enable_relative_import: bool, // Uses @module, to mean [module] loaded relative to this one
+    /// Enables @module syntax to mean `module` loaded relative to current module
+    enable_relative_import: bool, 
 }
 
 impl Default for VMConfig {
@@ -752,10 +776,15 @@ impl VMConfig {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Errors that can happen when sending a foreign object to Wren
 pub enum ForeignSendError {
+    /// No ['RuntimeClass'] exists in the specfied module with the given name
     NoForeignClass,
+    /// No Wrne declaration of the foreign class was made
     NoWrenClass,
+    /// Ran out of memory to allocate the class
     NoMemory,
+    /// The type of the ['RuntimeClass`] [`ClassObject`] differes from the given object
     ClassMismatch,
 
 }
