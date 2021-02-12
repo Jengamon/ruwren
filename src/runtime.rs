@@ -8,8 +8,12 @@ use crate::{UserData, WrenError};
 pub extern "C" fn wren_realloc(memory: *mut ffi::c_void, new_size: wren_sys::size_t) -> *mut ffi::c_void {
     unsafe {
         if memory.is_null() { // If memory == NULL
-            // allocate new memory
-            std::alloc::alloc_zeroed(std::alloc::Layout::from_size_align(new_size as usize, 8).unwrap()) as *mut _
+            if new_size == 0 {
+                std::ptr::null_mut()
+            } else {
+                // allocate new memory
+                std::alloc::alloc_zeroed(std::alloc::Layout::from_size_align(new_size as usize, 8).unwrap()) as *mut _
+            }
         } else {
             // Memory is an actual pointer to a location.
             if new_size == 0 {
