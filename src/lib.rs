@@ -969,6 +969,19 @@ impl VM {
         }
     }
 
+    pub fn set_list_element(&self, list_slot: SlotId, index: i32, element_slot: SlotId) {
+        self.ensure_slots(element_slot + 1);
+        self.ensure_slots(list_slot + 1);
+        unsafe {
+            wren_sys::wrenSetListElement(
+                self.vm,
+                list_slot as raw::c_int,
+                index as raw::c_int,
+                element_slot as raw::c_int
+            )
+        }
+    }
+
     pub fn get_list_count(&self, slot: SlotId) -> usize {
         self.ensure_slots(slot + 1);
         unsafe {
