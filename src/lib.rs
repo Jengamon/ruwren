@@ -1,5 +1,5 @@
 //! We need to expose the Wren API in a Rust-y way
-use wren_sys::{WrenVM, WrenHandle, WrenConfiguration};
+use wren_sys::{WrenConfiguration, WrenHandle, WrenVM, wrenGetMapContainsKey, wrenGetMapValue, wrenRemoveMapValue};
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
@@ -507,6 +507,7 @@ pub enum SlotType {
     Num,
     Bool,
     List,
+    Map,
     Null,
     String,
     Foreign,
@@ -917,6 +918,7 @@ impl VM {
             wren_sys::WrenType_WREN_TYPE_NUM => SlotType::Num,
             wren_sys::WrenType_WREN_TYPE_BOOL => SlotType::Bool,
             wren_sys::WrenType_WREN_TYPE_LIST => SlotType::List,
+            wren_sys::WrenType_WREN_TYPE_MAP => SlotType::Map,
             wren_sys::WrenType_WREN_TYPE_NULL => SlotType::Null,
             wren_sys::WrenType_WREN_TYPE_STRING => SlotType::String,
             wren_sys::WrenType_WREN_TYPE_FOREIGN => SlotType::Foreign,
@@ -971,6 +973,70 @@ impl VM {
         self.ensure_slots(slot + 1);
         unsafe {
             wren_sys::wrenGetListCount(self.vm, slot as raw::c_int) as usize
+        }
+    }
+
+    pub fn set_slot_new_map(&self, slot: SlotId) {
+        self.ensure_slots(slot + 1);
+        unsafe {
+            wren_sys::wrenSetSlotNewMap(self.vm, slot as raw::c_int)
+        }
+    }
+
+    pub fn get_map_count(&self, slot: SlotId) -> usize {
+        self.ensure_slots(slot + 1);
+        unsafe {
+            wren_sys::wrenGetMapCount(self.vm, slot as raw::c_int) as usize
+        }
+    }
+
+    pub fn get_map_contains_key(&self, map_slot: SlotId, key_slot: SlotId) -> bool {
+        self.ensure_slots(map_slot + 1);
+        self.ensure_slots(key_slot + 1);
+        unsafe {
+            wren_sys::wrenGetMapContainsKey(self.vm, map_slot as raw::c_int, key_slot as raw::c_int)
+        }
+    }
+
+    pub fn get_map_value(&self, map_slot: SlotId, key_slot: SlotId, value_slot: SlotId) {
+        self.ensure_slots(map_slot + 1);
+        self.ensure_slots(key_slot + 1);
+        self.ensure_slots(value_slot + 1);
+        unsafe {
+            wren_sys::wrenGetMapValue(
+                self.vm,
+                map_slot as raw::c_int,
+                key_slot as raw::c_int,
+                value_slot as raw::c_int
+            )
+        }
+    }
+
+    pub fn set_map_value(&self, map_slot: SlotId, key_slot: SlotId, value_slot: SlotId) {
+        self.ensure_slots(map_slot + 1);
+        self.ensure_slots(key_slot + 1);
+        self.ensure_slots(value_slot + 1);
+        unsafe {
+            wren_sys::wrenSetMapValue(
+                self.vm,
+                map_slot as raw::c_int,
+                key_slot as raw::c_int,
+                value_slot as raw::c_int
+            )
+        }
+    }
+
+    pub fn remove_map_value(&self, map_slot: SlotId, key_slot: SlotId, removed_value_slot: SlotId) {
+        self.ensure_slots(map_slot + 1);
+        self.ensure_slots(key_slot + 1);
+        self.ensure_slots(removed_value_slot + 1);
+        unsafe {
+            wren_sys::wrenRemoveMapValue(
+                self.vm,
+                map_slot as raw::c_int,
+                key_slot as raw::c_int,
+                removed_value_slot as raw::c_int
+            )
         }
     }
 
