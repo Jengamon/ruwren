@@ -1,6 +1,6 @@
 [package]
 name = "ruwren"
-version = "0.3.3"
+version = "0.4.0-pre"
 authors = ["Jengamon <bob.hostern@gmail.com>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
@@ -13,7 +13,7 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ruwren-sys = "0.3"
+ruwren-sys = "0.4.0-pre"
 
 [dev-dependencies]
 criterion = "0.3"

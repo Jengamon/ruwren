@@ -1,11 +1,11 @@
 use std::{ffi, os::raw};
-use wren_sys::{WrenVM, WrenErrorType, WrenForeignClassMethods};
+use wren_sys::{WrenVM, WrenErrorType, WrenForeignClassMethods, WrenLoadModuleResult};
 use crate::{UserData, WrenError};
 
 // Force Wren to use Rust's allocator to allocate memory
 // Done because sometimes Wren forces us to allocate memory and give *it* ownership
 // Rust might not use the standard allocator, so we move Wren to use *our* allocator
-pub extern "C" fn wren_realloc(memory: *mut ffi::c_void, new_size: wren_sys::size_t) -> *mut ffi::c_void {
+pub extern "C" fn wren_realloc(memory: *mut ffi::c_void, new_size: wren_sys::size_t, _user_data: *mut ffi::c_void) -> *mut ffi::c_void {
     unsafe {
         if memory.is_null() { // If memory == NULL
             // allocate new memory
@@ -88,16 +88,30 @@ pub extern "C" fn wren_bind_foreign_class(vm: *mut WrenVM, mdl: *const raw::c_ch
     fcm
 }
 
-pub extern "C" fn wren_load_module(vm: *mut WrenVM, name: *const raw::c_char) -> *mut raw::c_char {
+pub extern "C" fn wren_load_module_on_complete(_vm: *mut WrenVM, _name: *const raw::c_char, result: WrenLoadModuleResult) {
+    if result.source != std::ptr::null() {
+        unsafe {
+            let _c_string = ffi::CString::from_raw(result.source as *mut i8);
+        }
+    }
+}
+
+pub extern "C" fn wren_load_module(vm: *mut WrenVM, name: *const raw::c_char) -> WrenLoadModuleResult {
+    let mut lmr = WrenLoadModuleResult {
+        onComplete: Some(wren_load_module_on_complete),
+        source: std::ptr::null(),
+        userData: std::ptr::null_mut()
+    };
     // The whoooole reason we wrote wren_realloc - to force Wren into Rust's allocation space
     let conf = unsafe { &mut *(wren_sys::wrenGetUserData(vm) as *mut UserData) };
     let module_name = unsafe { ffi::CStr::from_ptr(name) };
-    match conf.loader.load_script(module_name.to_string_lossy().to_string()) {
+    lmr.source = match conf.loader.load_script(module_name.to_string_lossy().to_string()) {
         Some(string) => {
             ffi::CString::new(string).unwrap_or_else(|_| panic!("Failed to convert source to C string for {}", module_name.to_string_lossy())).into_raw()
         },
         None => std::ptr::null_mut()
-    }
+    };
+    lmr
 }
 
 pub extern "C" fn wren_canonicalize(_: *mut WrenVM, importer: *const raw::c_char, name: *const raw::c_char) -> *const raw::c_char {
