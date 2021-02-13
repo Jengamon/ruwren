@@ -936,6 +936,21 @@ impl VM {
         }
     }
 
+    pub fn has_variable<M: AsRef<str>, N: AsRef<str>>(&self, module: M, name: N) -> bool {
+        let module = ffi::CString::new(module.as_ref()).expect("module name conversion failed");
+        let name = ffi::CString::new(name.as_ref()).expect("variable name conversion failed");
+        unsafe {
+            wren_sys::wrenHasVariable(self.vm, module.as_ptr(), name.as_ptr())
+        }
+    }
+
+    pub fn has_module<M: AsRef<str>, N: AsRef<str>>(&self, module: M) -> bool {
+        let module = ffi::CString::new(module.as_ref()).expect("module name conversion failed");
+        unsafe {
+            wren_sys::wrenHasModule(self.vm, module.as_ptr())
+        }
+    }
+
     pub fn set_slot_new_list(&self, slot: SlotId) {
         self.ensure_slots(slot + 1);
         unsafe {
