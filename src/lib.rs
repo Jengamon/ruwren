@@ -1,5 +1,5 @@
 //! We need to expose the Wren API in a Rust-y way
-use wren_sys::{WrenConfiguration, WrenHandle, WrenVM, wrenGetMapContainsKey, wrenGetMapValue, wrenRemoveMapValue};
+use wren_sys::{WrenConfiguration, WrenHandle, WrenVM};
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
