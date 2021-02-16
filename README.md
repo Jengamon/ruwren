@@ -1,5 +1,7 @@
 # Ruwren: Wren bindings for Rust [![Crates.io](https://img.shields.io/crates/v/ruwren)](https://crates.io/crates/ruwren) [![docs.rs](https://docs.rs/ruwren/badge.svg)](https://docs.rs/ruwren/)
 
+Build status: [![Travis CI](https://travis-ci.com/Jengamon/ruwren.svg?branch=master)](https://travis-ci.com/github/Jengamon/ruwren)
+
 Here is an attempt at making some Rust Wren bindings in a more Rust style.
 It acts at times pretty transparently (you do have to deal with the slot / foreign API), but should be 
 
