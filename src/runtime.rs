@@ -6,8 +6,7 @@ use wren_sys::{WrenErrorType, WrenForeignClassMethods, WrenVM};
 // Done because sometimes Wren forces us to allocate memory and give *it* ownership
 // Rust might not use the standard allocator, so we move Wren to use *our* allocator
 pub extern "C" fn wren_realloc(
-    memory: *mut ffi::c_void,
-    new_size: wren_sys::size_t,
+    memory: *mut ffi::c_void, new_size: wren_sys::size_t,
 ) -> *mut ffi::c_void {
     unsafe {
         if memory.is_null() {
@@ -40,10 +39,7 @@ pub extern "C" fn wren_realloc(
 }
 
 pub extern "C" fn wren_error(
-    vm: *mut WrenVM,
-    typ: WrenErrorType,
-    module: *const raw::c_char,
-    line: raw::c_int,
+    vm: *mut WrenVM, typ: WrenErrorType, module: *const raw::c_char, line: raw::c_int,
     message: *const raw::c_char,
 ) {
     let conf = unsafe { &mut *(wren_sys::wrenGetUserData(vm) as *mut UserData) };
@@ -90,10 +86,7 @@ pub extern "C" fn wren_print(vm: *mut WrenVM, message: *const raw::c_char) {
 }
 
 pub extern "C" fn wren_bind_foreign_method(
-    vm: *mut WrenVM,
-    mdl: *const raw::c_char,
-    class: *const raw::c_char,
-    is_static: bool,
+    vm: *mut WrenVM, mdl: *const raw::c_char, class: *const raw::c_char, is_static: bool,
     sgn: *const raw::c_char,
 ) -> Option<unsafe extern "C" fn(*mut WrenVM)> {
     let conf = unsafe { &mut *(wren_sys::wrenGetUserData(vm) as *mut UserData) };
@@ -122,9 +115,7 @@ pub extern "C" fn wren_bind_foreign_method(
 }
 
 pub extern "C" fn wren_bind_foreign_class(
-    vm: *mut WrenVM,
-    mdl: *const raw::c_char,
-    class: *const raw::c_char,
+    vm: *mut WrenVM, mdl: *const raw::c_char, class: *const raw::c_char,
 ) -> WrenForeignClassMethods {
     let mut fcm = WrenForeignClassMethods {
         allocate: None,
@@ -166,9 +157,7 @@ pub extern "C" fn wren_load_module(vm: *mut WrenVM, name: *const raw::c_char) ->
 }
 
 pub extern "C" fn wren_canonicalize(
-    _: *mut WrenVM,
-    importer: *const raw::c_char,
-    name: *const raw::c_char,
+    _: *mut WrenVM, importer: *const raw::c_char, name: *const raw::c_char,
 ) -> *const raw::c_char {
     let _importer = unsafe { ffi::CStr::from_ptr(importer) };
     let _name = unsafe { ffi::CStr::from_ptr(name) };

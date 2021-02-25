@@ -115,9 +115,7 @@ impl ModuleLibrary {
 
     /// Attempts to find a [`RuntimeClass`] given a `module` name and a `class` name
     fn get_foreign_class<M: AsRef<str>, C: AsRef<str>>(
-        &self,
-        module: M,
-        class: C,
+        &self, module: M, class: C,
     ) -> Option<&RuntimeClass> {
         self.modules
             .get(module.as_ref())
@@ -674,9 +672,7 @@ impl VMWrapper {
     }
 
     pub fn interpret<M: AsRef<str>, C: AsRef<str>>(
-        &self,
-        module: M,
-        code: C,
+        &self, module: M, code: C,
     ) -> Result<(), VMError> {
         let module = ffi::CString::new(module.as_ref()).expect("module name conversion failed");
         let code = ffi::CString::new(code.as_ref()).expect("code conversion failed");
@@ -1086,11 +1082,7 @@ impl VM {
     ///  
     /// WARNING: This *will* overwrite slot 0, so be careful.
     pub fn set_slot_new_foreign<M: AsRef<str>, C: AsRef<str>, T: 'static + ClassObject>(
-        &self,
-        module: M,
-        class: C,
-        object: T,
-        slot: SlotId,
+        &self, module: M, class: C, object: T, slot: SlotId,
     ) -> Result<&mut T, ForeignSendError> {
         self.ensure_slots(slot + 1);
         let conf = unsafe { &mut *(wren_sys::wrenGetUserData(self.vm) as *mut UserData) };
@@ -1150,8 +1142,7 @@ impl VM {
     }
 
     fn make_call_handle<'b>(
-        vm: *mut WrenVM,
-        signature: FunctionSignature,
+        vm: *mut WrenVM, signature: FunctionSignature,
     ) -> Rc<FunctionHandle<'b>> {
         let signature =
             ffi::CString::new(signature.as_wren_string()).expect("signature conversion failed");
