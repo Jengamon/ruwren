@@ -1,5 +1,4 @@
-use ruwren::module_loader::BasicFileLoader;
-use ruwren::VMConfig;
+use ruwren::{ BasicFileLoader, VMConfig };
 
 fn main() {
     let script_loader = BasicFileLoader::new().base_dir("examples/relative_imports");
