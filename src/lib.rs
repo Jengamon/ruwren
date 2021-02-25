@@ -185,10 +185,10 @@ pub struct ForeignObject<T> {
 }
 
 /// Creates a Wren module
-/// 
+///
 /// Creates a function at $modl::publish_module, that takes a `&mut `[`ModuleLibrary`]
 /// and handles [`Module`] object creation and registration
-///
+/// 
 /// Also internally creates all the necessary extern "C" functions for Wren's callbacks
 ///
 /// See examples forlder for the syntax
@@ -957,7 +957,7 @@ impl VM {
         self.ensure_slots(list_slot + 1);
         unsafe {
             wren_sys::wrenGetListElement(
-                self.vm,
+                self.vm, 
                 list_slot as raw::c_int,
                 index as raw::c_int,
                 element_slot as raw::c_int
