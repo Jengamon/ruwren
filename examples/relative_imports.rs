@@ -1,8 +1,8 @@
-use ruwren::{BasicFileLoader, VMConfig};
+use ruwren::module_loader::BasicFileLoader;
+use ruwren::VMConfig;
 
 fn main() {
-    let mut script_loader = BasicFileLoader::new();
-    script_loader.base_dir("examples/relative_imports");
+    let script_loader = BasicFileLoader::new().base_dir("examples/relative_imports");
 
     let vm = VMConfig::new()
         .enable_relative_import(true)

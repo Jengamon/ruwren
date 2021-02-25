@@ -4,9 +4,11 @@ use std::sync::mpsc::{channel, Sender, Receiver};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 use std::cell::RefCell;
-use std::path::{Path, PathBuf};
 
 pub use wren_sys;
+
+pub mod module_loader;
+use module_loader::NullLoader;
 
 use std::{mem, ffi, os::raw, any, marker};
 
@@ -480,50 +482,6 @@ struct PrintlnPrinter;
 impl Printer for PrintlnPrinter {
     fn print(&mut self, s: String) {
         print!("{}", s);
-    }
-}
-
-struct NullLoader;
-impl ModuleScriptLoader for NullLoader {
-    fn load_script(&mut self, _: String) -> Option<String> { None }
-}
-
-pub struct BasicFileLoader {
-    base_dir: PathBuf,
-}
-impl BasicFileLoader {
-    pub fn new() -> BasicFileLoader {
-        BasicFileLoader {
-            base_dir: ".".into(),
-        }
-    }
-    pub fn base_dir<P: AsRef<Path>>(&mut self, base_dir: P) -> &mut Self {
-        self.base_dir = base_dir.as_ref().into();
-        self
-    }
-}
-/// Enable to load wren scripts from a base directory
-impl ModuleScriptLoader for BasicFileLoader {
-    fn load_script(&mut self, module: String) -> Option<String> {
-        use std::fs::File;
-        let module_path = self.base_dir.join(module).with_extension("wren");
-        let mut contents = String::new();
-        match File::open(module_path) {
-            Ok(mut file) => {
-                use std::io::Read;
-                match file.read_to_string(&mut contents) {
-                    Ok(_) => Some(contents),
-                    Err(file) => {
-                        eprintln!("failed to read file {:?}", file);
-                        None
-                    }
-                }
-            }
-            Err(file) => {
-                eprintln!("failed to open file {:?}", file);
-                None
-            }
-        }
     }
 }
 
