@@ -18,16 +18,16 @@ impl Point {
 impl super::Class for Point {
     fn initialize(vm: &super::VM) -> Point {
         let x = get_slot_checked!(vm => num 1);
-        Point {
-            x,
-        }
+        Point { x }
     }
 }
 
 struct Math;
 
 impl super::Class for Math {
-    fn initialize(_: &super::VM) -> Math { Math }
+    fn initialize(_: &super::VM) -> Math {
+        Math
+    }
 }
 
 impl Math {
@@ -39,9 +39,7 @@ impl Math {
 
     fn pointy(vm: &super::VM) {
         vm.ensure_slots(2);
-        let send = vm.set_slot_new_foreign("main", "RawPoint", Point {
-            x: 345.7
-        }, 0);
+        let send = vm.set_slot_new_foreign("main", "RawPoint", Point { x: 345.7 }, 0);
         if send.is_err() {
             panic!("Could not send RawPoint object");
         }
@@ -79,14 +77,17 @@ fn test_small_wren_program() {
 fn test_small_wren_program_call() {
     let vm = VMConfig::new().build();
 
-    let source = vm.interpret("main", r"
+    let source = vm.interpret(
+        "main",
+        r"
     class GameEngine {
         static update(elapsedTime) {
             System.print(elapsedTime)
             return 16.45
         }
     }
-    ");
+    ",
+    );
     assert!(source.is_ok());
 
     vm.execute(|vm| {
@@ -107,7 +108,9 @@ fn test_external_module() {
     let mut lib = super::ModuleLibrary::new();
     main::publish_module(&mut lib);
     let vm = VMConfig::new().library(&lib).build();
-    let source = vm.interpret("main", "
+    let source = vm.interpret(
+        "main",
+        "
     class Math {
         foreign static add5(a)
     }
@@ -138,7 +141,8 @@ fn test_external_module() {
             return Math.add5(16.45)
         }
     }
-    ");
+    ",
+    );
     println!("{:?}", source);
     assert!(source.is_ok());
 
@@ -166,13 +170,16 @@ fn test_script_module() {
     impl super::ModuleScriptLoader for TestLoader {
         fn load_script(&mut self, name: String) -> Option<String> {
             if name == "math" {
-                Some("
+                Some(
+                    "
                 class Math {
                     static add5(val) {
                         return val + 5
                     }
                 }
-                ".into())
+                "
+                    .into(),
+                )
             } else {
                 None
             }
@@ -180,7 +187,9 @@ fn test_script_module() {
     }
 
     let vm = VMConfig::new().script_loader(TestLoader).build();
-    let source = vm.interpret("main", "
+    let source = vm.interpret(
+        "main",
+        "
     import \"math\" for Math
 
     class GameEngine {
@@ -189,7 +198,8 @@ fn test_script_module() {
             return Math.add5(16.45)
         }
     }
-    ");
+    ",
+    );
     assert!(source.is_ok());
 
     vm.execute(|vm| {
@@ -204,7 +214,6 @@ fn test_script_module() {
         assert_eq!(vm.get_slot_type(0), super::SlotType::Num);
         assert_eq!(vm.get_slot_double(0), Some(21.45));
     });
-
 }
 
 #[test]
@@ -212,7 +221,9 @@ fn foreign_instance() {
     let mut lib = super::ModuleLibrary::new();
     main::publish_module(&mut lib);
     let vm = VMConfig::new().library(&lib).build();
-    let source = vm.interpret("main", "
+    let source = vm.interpret(
+        "main",
+        "
     class Math {
         foreign static add5(a)
         foreign static pointy()
@@ -233,7 +244,8 @@ fn foreign_instance() {
             return Math.add5(16.45)
         }
     }
-    ");
+    ",
+    );
     println!("{:?}", source);
     assert!(source.is_ok());
 

@@ -1,20 +1,20 @@
 //! We need to expose the Wren API in a Rust-y way
-use wren_sys::{WrenVM, WrenHandle, WrenConfiguration};
-use std::sync::mpsc::{channel, Sender, Receiver};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
-use std::cell::RefCell;
+use std::sync::mpsc::{channel, Receiver, Sender};
+use wren_sys::{WrenConfiguration, WrenHandle, WrenVM};
 
 pub use wren_sys;
 
 mod module_loader;
-pub use module_loader::{NullLoader, BasicFileLoader};
+pub use module_loader::{BasicFileLoader, NullLoader};
 
-use std::{mem, ffi, os::raw, any, marker};
+use std::{any, ffi, marker, mem, os::raw};
 
+mod runtime;
 #[cfg(test)]
 mod tests;
-mod runtime;
 
 #[derive(Debug)]
 /// Directly used by [`wren_error`](crate::runtime::wren_error) to report errors
@@ -30,37 +30,44 @@ pub enum VMError {
     Compile {
         module: String,
         line: i32,
-        error: String
+        error: String,
     },
     Runtime {
         error: String,
-        frames: Vec<VMStackFrameError>
-    }
+        frames: Vec<VMStackFrameError>,
+    },
 }
 
 #[derive(Debug, Clone)]
 pub struct VMStackFrameError {
     pub module: String,
     pub line: i32,
-    pub function: String
+    pub function: String,
 }
-
 
 impl std::fmt::Display for VMError {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            VMError::Compile { module, line, error } => write!(fmt, "Compile Error ({}:{}): {}", module, line, error),
+            VMError::Compile {
+                module,
+                line,
+                error,
+            } => write!(fmt, "Compile Error ({}:{}): {}", module, line, error),
             VMError::Runtime { error, frames } => {
                 writeln!(fmt, "Runtime Error: {}", error)?;
                 for frame in frames {
                     if frame.function == "" {
                         writeln!(fmt, "\tin {}:{}: <constructor>", frame.module, frame.line)?;
                     } else {
-                        writeln!(fmt, "\tin {}:{}: {}", frame.module, frame.line, frame.function)?;
+                        writeln!(
+                            fmt,
+                            "\tin {}:{}: {}",
+                            frame.module, frame.line, frame.function
+                        )?;
                     }
                 }
                 Ok(())
-            },
+            }
         }
     }
 }
@@ -72,7 +79,7 @@ impl std::error::Error for VMError {}
 pub struct Handle<'a> {
     handle: *mut WrenHandle,
     wvm: *mut WrenVM,
-    vm: marker::PhantomData<&'a VM>
+    vm: marker::PhantomData<&'a VM>,
 }
 
 impl<'a> Drop for Handle<'a> {
@@ -97,7 +104,7 @@ impl ModuleLibrary {
     /// Creates a new library
     pub fn new() -> ModuleLibrary {
         ModuleLibrary {
-            modules: HashMap::new()
+            modules: HashMap::new(),
         }
     }
 
@@ -107,8 +114,14 @@ impl ModuleLibrary {
     }
 
     /// Attempts to find a [`RuntimeClass`] given a `module` name and a `class` name
-    fn get_foreign_class<M: AsRef<str>, C: AsRef<str>>(&self, module: M, class: C) -> Option<&RuntimeClass> {
-        self.modules.get(module.as_ref()).and_then(|md| md.classes.get(class.as_ref()))
+    fn get_foreign_class<M: AsRef<str>, C: AsRef<str>>(
+        &self,
+        module: M,
+        class: C,
+    ) -> Option<&RuntimeClass> {
+        self.modules
+            .get(module.as_ref())
+            .and_then(|md| md.classes.get(class.as_ref()))
     }
 }
 
@@ -146,7 +159,7 @@ impl Module {
     /// Create a new module
     pub fn new() -> Module {
         Module {
-            classes: HashMap::new()
+            classes: HashMap::new(),
         }
     }
 
@@ -155,26 +168,37 @@ impl Module {
         let cp = C::generate_pointers();
         let init = C::initialize_pointer();
         let deinit = C::finalize_pointer();
-        self.classes.insert(name.into(), RuntimeClass {
-            construct: init,
-            destruct: deinit,
-            methods: cp,
-            type_id: any::TypeId::of::<C>(),
-        });
+        self.classes.insert(
+            name.into(),
+            RuntimeClass {
+                construct: init,
+                destruct: deinit,
+                methods: cp,
+                type_id: any::TypeId::of::<C>(),
+            },
+        );
         self
     }
 }
 
 /// Initialize function for Wren classes
 pub trait Class {
-    fn initialize(_: &VM) -> Self where Self: Sized;
+    fn initialize(_: &VM) -> Self
+    where
+        Self: Sized;
 }
 
 /// Indicates a "real" Wren class, and must be implemented to be added to a [`Module`]
 pub trait ClassObject: Class {
-    fn initialize_pointer() -> extern "C" fn(*mut WrenVM) where Self: Sized;
-    fn finalize_pointer() -> extern "C" fn(*mut ffi::c_void) where Self: Sized;
-    fn generate_pointers() -> ClassObjectPointers where Self: Sized;
+    fn initialize_pointer() -> extern "C" fn(*mut WrenVM)
+    where
+        Self: Sized;
+    fn finalize_pointer() -> extern "C" fn(*mut ffi::c_void)
+    where
+        Self: Sized;
+    fn generate_pointers() -> ClassObjectPointers
+    where
+        Self: Sized;
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -188,7 +212,7 @@ pub struct ForeignObject<T> {
 ///
 /// Creates a function at $modl::publish_module, that takes a `&mut `[`ModuleLibrary`]
 /// and handles [`Module`] object creation and registration
-/// 
+///
 /// Also internally creates all the necessary extern "C" functions for Wren's callbacks
 ///
 /// See examples forlder for the syntax
@@ -345,7 +369,7 @@ macro_rules! create_module {
     (@fn instance $name:ty => $inf:ident) => {
         pub(in super) unsafe extern "C" fn $inf(vm: *mut $crate::wren_sys::WrenVM) {
             use std::panic::{take_hook, set_hook, catch_unwind, AssertUnwindSafe};
-            
+
             let conf = &mut *($crate::wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
             let vm = std::rc::Weak::upgrade(&conf.vm).expect(&format!("Failed to access VM at {:p}", &conf.vm));
             set_hook(Box::new(|_| {}));
@@ -381,53 +405,95 @@ macro_rules! create_module {
 // We can do unwraps because we manually check the type beforehand, so we are *sure* it is there.
 #[macro_export]
 macro_rules! get_slot_checked {
-    ($vm:expr => num $slot:expr) => {
-        {
-            if $vm.get_slot_type($slot) != $crate::SlotType::Num { panic!("rust error [{}:{}]: Slot {} is not a <num>", file!(), line!(), $slot) }
-            $vm.get_slot_double($slot).unwrap()
+    ($vm:expr => num $slot:expr) => {{
+        if $vm.get_slot_type($slot) != $crate::SlotType::Num {
+            panic!(
+                "rust error [{}:{}]: Slot {} is not a <num>",
+                file!(),
+                line!(),
+                $slot
+            )
         }
-    };
+        $vm.get_slot_double($slot).unwrap()
+    }};
 
-    ($vm:expr => bool $slot:expr) => {
-        {
-            if $vm.get_slot_type($slot) != $crate::SlotType::Bool { panic!("rust error [{}:{}]: Slot {} is not a <bool>", file!(), line!(), $slot) }
-            $vm.get_slot_bool($slot).unwrap()
+    ($vm:expr => bool $slot:expr) => {{
+        if $vm.get_slot_type($slot) != $crate::SlotType::Bool {
+            panic!(
+                "rust error [{}:{}]: Slot {} is not a <bool>",
+                file!(),
+                line!(),
+                $slot
+            )
         }
-    };
+        $vm.get_slot_bool($slot).unwrap()
+    }};
 
-    ($vm:expr => string $slot:expr) => {
-        {
-            if $vm.get_slot_type($slot) != $crate::SlotType::String { panic!("rust error [{}:{}]: Slot {} is not a <string>", file!(), line!(), $slot) }
-            $vm.get_slot_string($slot).unwrap()
+    ($vm:expr => string $slot:expr) => {{
+        if $vm.get_slot_type($slot) != $crate::SlotType::String {
+            panic!(
+                "rust error [{}:{}]: Slot {} is not a <string>",
+                file!(),
+                line!(),
+                $slot
+            )
         }
-    };
+        $vm.get_slot_string($slot).unwrap()
+    }};
 
-    ($vm:expr => bytes $slot:expr) => {
-        {
-            if $vm.get_slot_type($slot) != $crate::SlotType::String { panic!("rust error [{}:{}]: Slot {} is not a <string>", file!(), line!(), $slot) }
-            $vm.get_slot_bytes($slot).unwrap()
+    ($vm:expr => bytes $slot:expr) => {{
+        if $vm.get_slot_type($slot) != $crate::SlotType::String {
+            panic!(
+                "rust error [{}:{}]: Slot {} is not a <string>",
+                file!(),
+                line!(),
+                $slot
+            )
         }
-    };
+        $vm.get_slot_bytes($slot).unwrap()
+    }};
 
-    ($vm:expr => foreign $t:ty => $slot:expr) => {
-        {
-            if $vm.get_slot_type($slot) != $crate::SlotType::Foreign { panic!("rust error [{}:{}]: Slot {} is not a <foreign>", file!(), line!(), $slot)}
-            match $vm.get_slot_foreign::<$t>($slot) {
-                Some(ty) => ty,
-                None => panic!("rust error [{}:{}]: Slot {} is not a foreign of type {}", file!(), line!(), $slot, std::any::type_name::<$t>())
-            }
+    ($vm:expr => foreign $t:ty => $slot:expr) => {{
+        if $vm.get_slot_type($slot) != $crate::SlotType::Foreign {
+            panic!(
+                "rust error [{}:{}]: Slot {} is not a <foreign>",
+                file!(),
+                line!(),
+                $slot
+            )
         }
-    };
+        match $vm.get_slot_foreign::<$t>($slot) {
+            Some(ty) => ty,
+            None => panic!(
+                "rust error [{}:{}]: Slot {} is not a foreign of type {}",
+                file!(),
+                line!(),
+                $slot,
+                std::any::type_name::<$t>()
+            ),
+        }
+    }};
 
-    ($vm:expr => foreign_mut $t:ty => $slot:expr) => {
-        {
-            if $vm.get_slot_type($slot) != $crate::SlotType::Foreign { panic!("rust error [{}:{}]: Slot {} is not a <foreign>", file!(), line!(), $slot)}
-            match $vm.get_slot_foreign_mut::<$t>($slot) {
-                Some(ty) => ty,
-                None => panic!("rust error [{}:{}]: Slot {} is not a foreign of type {}", file!(), line!(), $slot, std::any::type_name::<$t>())
-            }
+    ($vm:expr => foreign_mut $t:ty => $slot:expr) => {{
+        if $vm.get_slot_type($slot) != $crate::SlotType::Foreign {
+            panic!(
+                "rust error [{}:{}]: Slot {} is not a <foreign>",
+                file!(),
+                line!(),
+                $slot
+            )
         }
-    };
+        match $vm.get_slot_foreign_mut::<$t>($slot) {
+            Some(ty) => ty,
+            None => panic!(
+                "rust error [{}:{}]: Slot {} is not a foreign of type {}",
+                file!(),
+                line!(),
+                $slot,
+                std::any::type_name::<$t>()
+            ),
+        }
+    }};
 }
 
 pub fn type_name_of<T>(_: &T) -> &'static str {
@@ -437,15 +503,21 @@ pub fn type_name_of<T>(_: &T) -> &'static str {
 /// Sends a foreign object `$obj` as an object of `$class` in module `$modl` to slot `$slot`
 #[macro_export]
 macro_rules! send_foreign {
-    ($vm:expr, $modl:expr, $class:expr, $obj:expr => $slot:expr) => {
-        {
-            let obj_name = $crate::type_name_of(&$obj);
-            match $vm.set_slot_new_foreign($modl, $class, $obj, $slot) {
-                Err(e) => panic!("rust error [{}:{}]: Could not send type {:?} as [{}] {}: {}", file!(), line!(), obj_name, $modl, $class, e),
-                Ok(rf) => rf
-            }
+    ($vm:expr, $modl:expr, $class:expr, $obj:expr => $slot:expr) => {{
+        let obj_name = $crate::type_name_of(&$obj);
+        match $vm.set_slot_new_foreign($modl, $class, $obj, $slot) {
+            Err(e) => panic!(
+                "rust error [{}:{}]: Could not send type {:?} as [{}] {}: {}",
+                file!(),
+                line!(),
+                obj_name,
+                $modl,
+                $class,
+                e
+            ),
+            Ok(rf) => rf,
         }
-    }
+    }};
 }
 
 /// Enables one to enable module loading for Wren
@@ -454,11 +526,14 @@ pub trait ModuleScriptLoader {
     ///
     /// ### Returns
     /// - `Some(String)` containing the Wren source if the module exists
-    /// - `None` if not 
+    /// - `None` if not
     fn load_script(&mut self, name: String) -> Option<String>;
 }
 
-impl<T> ModuleScriptLoader for T where T: FnMut(String) -> Option<String> {
+impl<T> ModuleScriptLoader for T
+where
+    T: FnMut(String) -> Option<String>,
+{
     fn load_script(&mut self, name: String) -> Option<String> {
         (*self)(name)
     }
@@ -472,7 +547,10 @@ pub trait Printer {
     fn print(&mut self, s: String);
 }
 
-impl<T> Printer for T where T: FnMut(String) {
+impl<T> Printer for T
+where
+    T: FnMut(String),
+{
     fn print(&mut self, s: String) {
         (*self)(s)
     }
@@ -508,17 +586,14 @@ pub enum SlotType {
     Null,
     String,
     Foreign,
-    Unknown
+    Unknown,
 }
 
 pub type SlotId = usize;
 
 #[derive(Debug, Clone)]
 pub enum FunctionSignature {
-    Function {
-        name: String,
-        arity: usize
-    },
+    Function { name: String, arity: usize },
     Getter(String),
     Setter(String),
 }
@@ -527,7 +602,7 @@ impl FunctionSignature {
     pub fn new_function<N: Into<String>>(name: N, arity: usize) -> FunctionSignature {
         FunctionSignature::Function {
             name: name.into(),
-            arity
+            arity,
         }
     }
 
@@ -541,7 +616,9 @@ impl FunctionSignature {
 
     fn as_wren_string(&self) -> String {
         match self {
-            FunctionSignature::Function { name, arity } => format!("{}({})", name, vec!["_".to_string(); *arity].join(",")),
+            FunctionSignature::Function { name, arity } => {
+                format!("{}({})", name, vec!["_".to_string(); *arity].join(","))
+            }
             FunctionSignature::Getter(name) => name.clone(),
             FunctionSignature::Setter(name) => format!("{}=(_)", name),
         }
@@ -569,72 +646,95 @@ impl VMWrapper {
         let vm = self.0.borrow();
         match unsafe { wren_sys::wrenCall(vm.vm, handle.0.handle) } {
             wren_sys::WrenInterpretResult_WREN_RESULT_SUCCESS => Ok(()),
-            wren_sys::WrenInterpretResult_WREN_RESULT_COMPILE_ERROR => unreachable!("wrenCall doesn't compile anything"),
+            wren_sys::WrenInterpretResult_WREN_RESULT_COMPILE_ERROR => {
+                unreachable!("wrenCall doesn't compile anything")
+            }
             wren_sys::WrenInterpretResult_WREN_RESULT_RUNTIME_ERROR => {
                 let mut error = "".to_string();
                 let mut frames = vec![];
                 while let Ok(err) = vm.error_recv.try_recv() {
                     match err {
-                        WrenError::Runtime(msg) => {error = msg; },
-                        WrenError::StackTrace(module, line, msg) => {frames.push(VMStackFrameError {
-                            module, line, function: msg
-                        }); },
-                        _ => unreachable!()
+                        WrenError::Runtime(msg) => {
+                            error = msg;
+                        }
+                        WrenError::StackTrace(module, line, msg) => {
+                            frames.push(VMStackFrameError {
+                                module,
+                                line,
+                                function: msg,
+                            });
+                        }
+                        _ => unreachable!(),
                     }
                 }
-                Err(VMError::Runtime{
-                    error,
-                    frames
-                })
-            },
-            _ => unreachable!()
+                Err(VMError::Runtime { error, frames })
+            }
+            _ => unreachable!(),
         }
     }
 
-    pub fn interpret<M: AsRef<str>, C: AsRef<str>>(&self, module: M, code: C) -> Result<(), VMError> {
+    pub fn interpret<M: AsRef<str>, C: AsRef<str>>(
+        &self,
+        module: M,
+        code: C,
+    ) -> Result<(), VMError> {
         let module = ffi::CString::new(module.as_ref()).expect("module name conversion failed");
         let code = ffi::CString::new(code.as_ref()).expect("code conversion failed");
         let vm = self.0.borrow();
-        match unsafe { wren_sys::wrenInterpret(vm.vm, module.as_ptr() as *const i8, code.as_ptr() as *const i8) } {
+        match unsafe {
+            wren_sys::wrenInterpret(
+                vm.vm,
+                module.as_ptr() as *const i8,
+                code.as_ptr() as *const i8,
+            )
+        } {
             wren_sys::WrenInterpretResult_WREN_RESULT_SUCCESS => Ok(()),
-            wren_sys::WrenInterpretResult_WREN_RESULT_COMPILE_ERROR => match vm.error_recv.try_recv() {
-                Ok(WrenError::Compile(module, line, msg)) => {
-                    Err(VMError::Compile { module, line, error: msg })
+            wren_sys::WrenInterpretResult_WREN_RESULT_COMPILE_ERROR => {
+                match vm.error_recv.try_recv() {
+                    Ok(WrenError::Compile(module, line, msg)) => Err(VMError::Compile {
+                        module,
+                        line,
+                        error: msg,
+                    }),
+                    _ => unreachable!(),
                 }
-                _ => unreachable!()
-            },
+            }
             wren_sys::WrenInterpretResult_WREN_RESULT_RUNTIME_ERROR => {
                 let mut error = "".to_string();
                 let mut frames = vec![];
                 while let Ok(err) = vm.error_recv.try_recv() {
                     match err {
-                        WrenError::Runtime(msg) => {error = msg; },
-                        WrenError::StackTrace(module, line, msg) => {frames.push(VMStackFrameError {
-                            module, line, function: msg
-                        }); },
-                        _ => unreachable!()
+                        WrenError::Runtime(msg) => {
+                            error = msg;
+                        }
+                        WrenError::StackTrace(module, line, msg) => {
+                            frames.push(VMStackFrameError {
+                                module,
+                                line,
+                                function: msg,
+                            });
+                        }
+                        _ => unreachable!(),
                     }
                 }
-                Err(VMError::Runtime{
-                    error,
-                    frames
-                })
-            },
-            _ => unreachable!()
+                Err(VMError::Runtime { error, frames })
+            }
+            _ => unreachable!(),
         }
     }
 
-    pub fn execute<T, F>(&self, f: F) -> T where F: FnOnce(&VM) -> T {
+    pub fn execute<T, F>(&self, f: F) -> T
+    where
+        F: FnOnce(&VM) -> T,
+    {
         f(&self.0.borrow())
     }
 
     pub fn get_slot_handle(&self, slot: SlotId) -> Rc<Handle> {
         Rc::new(Handle {
-            handle: unsafe {
-                wren_sys::wrenGetSlotHandle(self.0.borrow().vm, slot as raw::c_int)
-            },
+            handle: unsafe { wren_sys::wrenGetSlotHandle(self.0.borrow().vm, slot as raw::c_int) },
             wvm: self.0.borrow().vm,
-            vm: marker::PhantomData
+            vm: marker::PhantomData,
         })
     }
 
@@ -650,9 +750,7 @@ impl VMWrapper {
 
     /// Instruct Wren to start a garbage collection cycle
     pub fn collect_garbage(&self) {
-        unsafe {
-            wren_sys::wrenCollectGarbage(self.0.borrow().vm)
-        }
+        unsafe { wren_sys::wrenCollectGarbage(self.0.borrow().vm) }
     }
 }
 
@@ -665,7 +763,7 @@ pub struct VMConfig {
     heap_growth_percent: usize,
 
     /// Enables @module syntax to mean `module` loaded relative to current module
-    enable_relative_import: bool, 
+    enable_relative_import: bool,
 }
 
 impl Default for VMConfig {
@@ -733,7 +831,7 @@ impl VMConfig {
         // Have an uninitialized VM...
         let wvm = Rc::new(RefCell::new(VM {
             vm: std::ptr::null_mut(),
-            error_recv: erx
+            error_recv: erx,
         }));
 
         let vm_config = Box::into_raw(Box::new(UserData {
@@ -784,7 +882,6 @@ pub enum ForeignSendError {
     NoMemory,
     /// The type of the ['RuntimeClass`] [`ClassObject`] differes from the given object
     ClassMismatch,
-
 }
 
 impl std::fmt::Display for ForeignSendError {
@@ -803,42 +900,37 @@ impl std::error::Error for ForeignSendError {}
 impl VM {
     // Slot and Handle API
     pub fn ensure_slots(&self, count: usize) {
-        unsafe {
-            wren_sys::wrenEnsureSlots(self.vm, count as raw::c_int)
-        }
+        unsafe { wren_sys::wrenEnsureSlots(self.vm, count as raw::c_int) }
     }
 
     pub fn get_slot_count(&self) -> usize {
-        unsafe {
-            wren_sys::wrenGetSlotCount(self.vm) as usize
-        }
+        unsafe { wren_sys::wrenGetSlotCount(self.vm) as usize }
     }
 
     pub fn set_slot_bool(&self, slot: SlotId, val: bool) {
         self.ensure_slots(slot + 1);
-        unsafe {
-            wren_sys::wrenSetSlotBool(self.vm, slot as raw::c_int, val)
-        }
+        unsafe { wren_sys::wrenSetSlotBool(self.vm, slot as raw::c_int, val) }
     }
 
     pub fn set_slot_double(&self, slot: SlotId, val: f64) {
         self.ensure_slots(slot + 1);
-        unsafe {
-            wren_sys::wrenSetSlotDouble(self.vm, slot as raw::c_int, val)
-        }
+        unsafe { wren_sys::wrenSetSlotDouble(self.vm, slot as raw::c_int, val) }
     }
 
     pub fn set_slot_null(&self, slot: SlotId) {
         self.ensure_slots(slot + 1);
-        unsafe {
-            wren_sys::wrenSetSlotNull(self.vm, slot as raw::c_int)
-        }
+        unsafe { wren_sys::wrenSetSlotNull(self.vm, slot as raw::c_int) }
     }
 
     pub fn set_slot_bytes(&self, slot: SlotId, bytes: &[u8]) {
         self.ensure_slots(slot + 1);
         unsafe {
-            wren_sys::wrenSetSlotBytes(self.vm, slot as raw::c_int, bytes as *const _ as *const raw::c_char, bytes.len() as wren_sys::size_t);
+            wren_sys::wrenSetSlotBytes(
+                self.vm,
+                slot as raw::c_int,
+                bytes as *const _ as *const raw::c_char,
+                bytes.len() as wren_sys::size_t,
+            );
         }
     }
 
@@ -846,7 +938,12 @@ impl VM {
         self.ensure_slots(slot + 1);
         let string = string.as_ref();
         unsafe {
-            wren_sys::wrenSetSlotBytes(self.vm, slot as raw::c_int, string.as_ptr() as *const _, string.len() as wren_sys::size_t);
+            wren_sys::wrenSetSlotBytes(
+                self.vm,
+                slot as raw::c_int,
+                string.as_ptr() as *const _,
+                string.len() as wren_sys::size_t,
+            );
         }
     }
 
@@ -855,9 +952,7 @@ impl VM {
         if self.get_slot_type(slot) != SlotType::Bool {
             None
         } else {
-            unsafe {
-                Some(wren_sys::wrenGetSlotBool(self.vm, slot as raw::c_int))
-            }
+            unsafe { Some(wren_sys::wrenGetSlotBool(self.vm, slot as raw::c_int)) }
         }
     }
 
@@ -866,9 +961,7 @@ impl VM {
         if self.get_slot_type(slot) != SlotType::Num {
             None
         } else {
-            unsafe {
-                Some(wren_sys::wrenGetSlotDouble(self.vm, slot as raw::c_int))
-            }
+            unsafe { Some(wren_sys::wrenGetSlotDouble(self.vm, slot as raw::c_int)) }
         }
     }
 
@@ -885,9 +978,7 @@ impl VM {
 
             // Do some pointer maths to get the vector. Hurrah!
             for offset in 0..length {
-                unsafe {
-                    bytes.push(*ptr.offset(offset as isize) as u8)
-                }
+                unsafe { bytes.push(*ptr.offset(offset as isize) as u8) }
             }
 
             Some(bytes)
@@ -899,12 +990,10 @@ impl VM {
         if self.get_slot_type(slot) != SlotType::String {
             None
         } else {
-            let ptr = unsafe {
-                wren_sys::wrenGetSlotString(self.vm, slot as raw::c_int)
-            };
-    
-            let cstr = unsafe{ ffi::CStr::from_ptr(ptr) };
-    
+            let ptr = unsafe { wren_sys::wrenGetSlotString(self.vm, slot as raw::c_int) };
+
+            let cstr = unsafe { ffi::CStr::from_ptr(ptr) };
+
             Some(cstr.to_string_lossy().to_string())
         }
     }
@@ -919,7 +1008,7 @@ impl VM {
             wren_sys::WrenType_WREN_TYPE_STRING => SlotType::String,
             wren_sys::WrenType_WREN_TYPE_FOREIGN => SlotType::Foreign,
             wren_sys::WrenType_WREN_TYPE_UNKNOWN => SlotType::Unknown,
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
@@ -934,9 +1023,7 @@ impl VM {
 
     pub fn set_slot_new_list(&self, slot: SlotId) {
         self.ensure_slots(slot + 1);
-        unsafe {
-            wren_sys::wrenSetSlotNewList(self.vm, slot as raw::c_int)
-        }
+        unsafe { wren_sys::wrenSetSlotNewList(self.vm, slot as raw::c_int) }
     }
 
     pub fn insert_in_list(&self, list_slot: SlotId, index: i32, element_slot: SlotId) {
@@ -944,10 +1031,10 @@ impl VM {
         self.ensure_slots(list_slot + 1);
         unsafe {
             wren_sys::wrenInsertInList(
-                self.vm, 
+                self.vm,
                 list_slot as raw::c_int,
                 index as raw::c_int,
-                element_slot as raw::c_int
+                element_slot as raw::c_int,
             )
         }
     }
@@ -957,19 +1044,17 @@ impl VM {
         self.ensure_slots(list_slot + 1);
         unsafe {
             wren_sys::wrenGetListElement(
-                self.vm, 
+                self.vm,
                 list_slot as raw::c_int,
                 index as raw::c_int,
-                element_slot as raw::c_int
+                element_slot as raw::c_int,
             )
         }
     }
 
     pub fn get_list_count(&self, slot: SlotId) -> usize {
         self.ensure_slots(slot + 1);
-        unsafe {
-            wren_sys::wrenGetListCount(self.vm, slot as raw::c_int) as usize
-        }
+        unsafe { wren_sys::wrenGetListCount(self.vm, slot as raw::c_int) as usize }
     }
 
     pub fn get_slot_foreign<T: 'static + ClassObject>(&self, slot: SlotId) -> Option<&T> {
@@ -1000,15 +1085,23 @@ impl VM {
     /// If it's type matches with type T, will create a new instance in [slot]
     ///  
     /// WARNING: This *will* overwrite slot 0, so be careful.
-    pub fn set_slot_new_foreign<M: AsRef<str>, C: AsRef<str>, T: 'static + ClassObject>(&self, module: M, class: C, object: T, slot: SlotId) 
-        -> Result<&mut T, ForeignSendError> 
-    {
+    pub fn set_slot_new_foreign<M: AsRef<str>, C: AsRef<str>, T: 'static + ClassObject>(
+        &self,
+        module: M,
+        class: C,
+        object: T,
+        slot: SlotId,
+    ) -> Result<&mut T, ForeignSendError> {
         self.ensure_slots(slot + 1);
         let conf = unsafe { &mut *(wren_sys::wrenGetUserData(self.vm) as *mut UserData) };
 
         self.ensure_slots((slot + 1) as usize);
         // Even if slot == 0, we can just load the class into slot 0, then use wrenSetSlotNewForeign to "create" a new object
-        match conf.library.as_ref().and_then(|lib| lib.get_foreign_class(module.as_ref(), class.as_ref())) {
+        match conf
+            .library
+            .as_ref()
+            .and_then(|lib| lib.get_foreign_class(module.as_ref(), class.as_ref()))
+        {
             None => Err(ForeignSendError::NoForeignClass), // Couldn't find the corresponding class
             Some(runtime_class) => {
                 if runtime_class.type_id == any::TypeId::of::<T>() {
@@ -1027,9 +1120,15 @@ impl VM {
                     // Make sure the class isn't null (undeclared in Wren code)
                     match self.get_slot_type(0) {
                         SlotType::Null => Err(ForeignSendError::NoWrenClass), // You haven't declared the foreign class to Wren
-                        SlotType::Unknown => unsafe { // A Wren class
+                        SlotType::Unknown => unsafe {
+                            // A Wren class
                             // Create the Wren foreign pointer
-                            let wptr = wren_sys::wrenSetSlotNewForeign(self.vm, slot as raw::c_int, 0, mem::size_of::<ForeignObject<T>>() as wren_sys::size_t);
+                            let wptr = wren_sys::wrenSetSlotNewForeign(
+                                self.vm,
+                                slot as raw::c_int,
+                                0,
+                                mem::size_of::<ForeignObject<T>>() as wren_sys::size_t,
+                            );
 
                             // Move the ForeignObject into the pointer
                             std::ptr::write(wptr as *mut _, new_obj);
@@ -1037,10 +1136,10 @@ impl VM {
                             // Reinterpret the pointer as an object if we were successful
                             match (wptr as *mut ForeignObject<T>).as_mut() {
                                 Some(ptr) => Ok(ptr.object.as_mut().unwrap()),
-                                None => Err(ForeignSendError::NoMemory)
+                                None => Err(ForeignSendError::NoMemory),
                             }
                         },
-                        _ => Err(ForeignSendError::NoWrenClass)
+                        _ => Err(ForeignSendError::NoWrenClass),
                     }
                 } else {
                     // The classes do not match. Avoid.
@@ -1050,21 +1149,21 @@ impl VM {
         }
     }
 
-    fn make_call_handle<'b>(vm: *mut WrenVM, signature: FunctionSignature) -> Rc<FunctionHandle<'b>> {
-        let signature = ffi::CString::new(signature.as_wren_string()).expect("signature conversion failed");
+    fn make_call_handle<'b>(
+        vm: *mut WrenVM,
+        signature: FunctionSignature,
+    ) -> Rc<FunctionHandle<'b>> {
+        let signature =
+            ffi::CString::new(signature.as_wren_string()).expect("signature conversion failed");
         Rc::new(FunctionHandle(Handle {
-            handle: unsafe {
-                wren_sys::wrenMakeCallHandle(vm, signature.as_ptr())
-            },
+            handle: unsafe { wren_sys::wrenMakeCallHandle(vm, signature.as_ptr()) },
             wvm: vm,
-            vm: marker::PhantomData
+            vm: marker::PhantomData,
         }))
     }
 
     pub fn abort_fiber(&self, slot: SlotId) {
-        unsafe {
-            wren_sys::wrenAbortFiber(self.vm, slot as raw::c_int)
-        }
+        unsafe { wren_sys::wrenAbortFiber(self.vm, slot as raw::c_int) }
     }
 }
 

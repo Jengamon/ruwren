@@ -1,5 +1,5 @@
-use ruwren::{VM, VMConfig, Class, ModuleLibrary, FunctionSignature, create_module};
-use std::time::{SystemTime, Instant};
+use ruwren::{create_module, Class, FunctionSignature, ModuleLibrary, VMConfig, VM};
+use std::time::{Instant, SystemTime};
 
 struct Counter {
     count: i32,
@@ -7,9 +7,7 @@ struct Counter {
 
 impl Class for Counter {
     fn initialize(_: &VM) -> Counter {
-        Counter {
-            count: 0,
-        }
+        Counter { count: 0 }
     }
 }
 
@@ -24,7 +22,7 @@ impl Counter {
         let dur = now.duration_since(SystemTime::UNIX_EPOCH);
         match dur {
             Err(_) => vm.set_slot_null(0),
-            Ok(dur) => vm.set_slot_double(0, dur.as_secs_f64())
+            Ok(dur) => vm.set_slot_double(0, dur.as_secs_f64()),
         };
     }
 }
@@ -43,7 +41,8 @@ fn main() {
     main::publish_module(&mut lib);
     let vm = VMConfig::new().library(&lib).build();
 
-    vm.interpret("main", include_str!("handles/main.wren")).unwrap(); // Should succeed
+    vm.interpret("main", include_str!("handles/main.wren"))
+        .unwrap(); // Should succeed
 
     vm.execute(|vm| {
         vm.ensure_slots(1);
@@ -59,7 +58,7 @@ fn main() {
         let res = vm.call_handle(&main_function);
         if let Err(err) = res {
             eprintln!("{}", err);
-            break
+            break;
         }
     }
     println!("Finished in {:?}", Instant::now() - start);

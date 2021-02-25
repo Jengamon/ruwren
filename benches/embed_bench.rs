@@ -1,5 +1,8 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use ruwren::{Class, VM, VMConfig, ModuleLibrary, FunctionSignature, get_slot_checked, create_module, send_foreign};
+use ruwren::{
+    create_module, get_slot_checked, send_foreign, Class, FunctionSignature, ModuleLibrary,
+    VMConfig, VM,
+};
 
 struct Fibonacci;
 
@@ -21,7 +24,7 @@ impl Fibonacci {
                 let l = get_slot_checked!(vm => num 0) as u64;
                 vm.set_slot_double(1, (n - 2) as f64);
                 Fibonacci::fibonacci(vm);
-                let r = get_slot_checked!(vm => num 0) as u64; 
+                let r = get_slot_checked!(vm => num 0) as u64;
                 l + r
             }
         };
@@ -42,53 +45,66 @@ fn fibonacci_benchmark(c: &mut Criterion) {
     fibonacci::publish_module(&mut lib);
     let vm = VMConfig::new().library(&lib).build();
 
-    vm.interpret("fibonacci", r#"
+    vm.interpret(
+        "fibonacci",
+        r#"
     class Fibonacci {
         foreign static fibonacci(n)
     }
-    "#).unwrap();
+    "#,
+    )
+    .unwrap();
 
-    vm.interpret("main", r#"import "fibonacci" for Fibonacci"#).unwrap();
+    vm.interpret("main", r#"import "fibonacci" for Fibonacci"#)
+        .unwrap();
 
-    c.bench_function("fib 20", |b| b.iter(|| {
-        vm.interpret("main", r#"
+    c.bench_function("fib 20", |b| {
+        b.iter(|| {
+            vm.interpret(
+                "main",
+                r#"
         Fibonacci.fibonacci(20)
-        "#).unwrap();
-    }));
+        "#,
+            )
+            .unwrap();
+        })
+    });
 }
 
 trait Boxx {
-  fn flipp(&self) -> u32;
+    fn flipp(&self) -> u32;
 }
 
 impl Class for Box<dyn Boxx> {
-  fn initialize(_: &VM) -> Self {
-      panic!("Can't initialize DynBoxx")
-  }
+    fn initialize(_: &VM) -> Self {
+        panic!("Can't initialize DynBoxx")
+    }
 }
 
 #[derive(Clone)]
 struct Bonafide {
-  x: u32,
-  y: u32
+    x: u32,
+    y: u32,
 }
 
 impl Class for Bonafide {
-  fn initialize(vm: &VM) -> Bonafide {
-    let x = get_slot_checked!(vm => num 1) as u32;
-    let y = get_slot_checked!(vm => num 2) as u32;
-    Bonafide {x, y}
-  }
+    fn initialize(vm: &VM) -> Bonafide {
+        let x = get_slot_checked!(vm => num 1) as u32;
+        let y = get_slot_checked!(vm => num 2) as u32;
+        Bonafide { x, y }
+    }
 }
 
 impl Bonafide {
-  fn send_box(&self, vm: &VM) {
-    send_foreign!(vm, "boxed", "DynBoxx", Box::new(self.clone()) as Box<dyn Boxx> => 0);
-  }
+    fn send_box(&self, vm: &VM) {
+        send_foreign!(vm, "boxed", "DynBoxx", Box::new(self.clone()) as Box<dyn Boxx> => 0);
+    }
 }
 
 impl Boxx for Bonafide {
-  fn flipp(&self) -> u32 { self.x + self.y }
+    fn flipp(&self) -> u32 {
+        self.x + self.y
+    }
 }
 
 create_module! {
@@ -112,24 +128,24 @@ fn foreign_box_benchmark(c: &mut Criterion) {
 
     let res = vm.interpret("main", include_str!("boxed/main.wren"));
     if let Err(err) = res {
-      eprintln!("Load error: {}", err);
-      return;
+        eprintln!("Load error: {}", err);
+        return;
     }
 
     c.bench_function("box_embed", |b| {
         vm.execute(|vm| {
             vm.get_variable("main", "BoxedTest", 0);
-        }); 
+        });
 
         let res = vm.call(FunctionSignature::new_getter("main"));
 
         if let Err(err) = res {
-          eprintln!("{}", err);
+            eprintln!("{}", err);
         } else {
             b.iter(|| {
                 vm.execute(|vm| {
-                  let f = get_slot_checked!(vm => foreign Box<dyn crate::Boxx> => 0);
-                  let _ = f.flipp();
+                    let f = get_slot_checked!(vm => foreign Box<dyn crate::Boxx> => 0);
+                    let _ = f.flipp();
                 })
             });
         }

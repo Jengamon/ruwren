@@ -1,8 +1,8 @@
-use ruwren::{VM, Class, VMConfig, ModuleLibrary, create_module, get_slot_checked, send_foreign};
+use ruwren::{create_module, get_slot_checked, send_foreign, Class, ModuleLibrary, VMConfig, VM};
 
 struct Vector {
     x: f64,
-    y: f64
+    y: f64,
 }
 
 impl Class for Vector {
