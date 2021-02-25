@@ -76,7 +76,7 @@ vm.call(FunctionSignature::new_function("update", 1));
 
 ## Embedding Rust code in Wren
 
-Here's a short example of how you can embed your Russt data into Wren:
+Here's a short example of how you can embed your Rust data into Wren:
 
 ```rust
 use ruwren::{Class, VM, VMConfig, ModuleLibrary, get_slot_checked, create_module};
