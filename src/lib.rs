@@ -7,6 +7,9 @@ use std::cell::RefCell;
 
 pub use wren_sys;
 
+mod module_loader;
+pub use module_loader::{NullLoader, BasicFileLoader};
+
 use std::{mem, ffi, os::raw, any, marker};
 
 #[cfg(test)]
@@ -480,11 +483,6 @@ impl Printer for PrintlnPrinter {
     fn print(&mut self, s: String) {
         print!("{}", s);
     }
-}
-
-struct NullLoader;
-impl ModuleScriptLoader for NullLoader {
-    fn load_script(&mut self, _: String) -> Option<String> { None }
 }
 
 #[derive(Debug)]
