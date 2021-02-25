@@ -185,7 +185,7 @@ pub struct ForeignObject<T> {
 }
 
 /// Creates a Wren module
-///
+/// 
 /// Creates a function at $modl::publish_module, that takes a `&mut `[`ModuleLibrary`]
 /// and handles [`Module`] object creation and registration
 ///
@@ -345,7 +345,7 @@ macro_rules! create_module {
     (@fn instance $name:ty => $inf:ident) => {
         pub(in super) unsafe extern "C" fn $inf(vm: *mut $crate::wren_sys::WrenVM) {
             use std::panic::{take_hook, set_hook, catch_unwind, AssertUnwindSafe};
-
+            
             let conf = &mut *($crate::wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
             let vm = std::rc::Weak::upgrade(&conf.vm).expect(&format!("Failed to access VM at {:p}", &conf.vm));
             set_hook(Box::new(|_| {}));
@@ -454,7 +454,7 @@ pub trait ModuleScriptLoader {
     ///
     /// ### Returns
     /// - `Some(String)` containing the Wren source if the module exists
-    /// - `None` if not
+    /// - `None` if not 
     fn load_script(&mut self, name: String) -> Option<String>;
 }
 
@@ -665,7 +665,7 @@ pub struct VMConfig {
     heap_growth_percent: usize,
 
     /// Enables @module syntax to mean `module` loaded relative to current module
-    enable_relative_import: bool,
+    enable_relative_import: bool, 
 }
 
 impl Default for VMConfig {
@@ -902,9 +902,9 @@ impl VM {
             let ptr = unsafe {
                 wren_sys::wrenGetSlotString(self.vm, slot as raw::c_int)
             };
-
+    
             let cstr = unsafe{ ffi::CStr::from_ptr(ptr) };
-
+    
             Some(cstr.to_string_lossy().to_string())
         }
     }
@@ -944,7 +944,7 @@ impl VM {
         self.ensure_slots(list_slot + 1);
         unsafe {
             wren_sys::wrenInsertInList(
-                self.vm,
+                self.vm, 
                 list_slot as raw::c_int,
                 index as raw::c_int,
                 element_slot as raw::c_int
@@ -998,10 +998,10 @@ impl VM {
 
     /// Looks up the specifed [module] for the specified [class]
     /// If it's type matches with type T, will create a new instance in [slot]
-    ///
+    ///  
     /// WARNING: This *will* overwrite slot 0, so be careful.
-    pub fn set_slot_new_foreign<M: AsRef<str>, C: AsRef<str>, T: 'static + ClassObject>(&self, module: M, class: C, object: T, slot: SlotId)
-        -> Result<&mut T, ForeignSendError>
+    pub fn set_slot_new_foreign<M: AsRef<str>, C: AsRef<str>, T: 'static + ClassObject>(&self, module: M, class: C, object: T, slot: SlotId) 
+        -> Result<&mut T, ForeignSendError> 
     {
         self.ensure_slots(slot + 1);
         let conf = unsafe { &mut *(wren_sys::wrenGetUserData(self.vm) as *mut UserData) };
