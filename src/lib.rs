@@ -1088,9 +1088,13 @@ impl VM {
         unsafe { wren_sys::wrenSetSlotNewMap(self.vm, slot as raw::c_int) }
     }
 
-    pub fn get_map_count(&self, slot: SlotId) -> usize {
+    pub fn get_map_count(&self, slot: SlotId) -> Option<usize> {
         self.ensure_slots(slot + 1);
-        unsafe { wren_sys::wrenGetListCount(self.vm, slot as raw::c_int) as usize }
+        if self.get_slot_type(slot) == SlotType::Map {
+            Some(unsafe { wren_sys::wrenGetListCount(self.vm, slot as raw::c_int) as usize })
+        } else {
+            None
+        }
     }
 
     pub fn get_map_contains_key(&self, map_slot: SlotId, key_slot: SlotId) -> Option<bool> {
