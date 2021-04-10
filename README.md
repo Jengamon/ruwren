@@ -14,7 +14,7 @@ It acts at times pretty transparently (you do have to deal with the slot / forei
 Just add:
 
 ```toml
-ruwren = "0.3"
+ruwren = "0.4"
 ```
 
 to your Cargo.toml.
