@@ -1022,16 +1022,12 @@ impl VM {
     pub fn has_variable<M: AsRef<str>, N: AsRef<str>>(&self, module: M, name: N) -> bool {
         let module = ffi::CString::new(module.as_ref()).expect("module name conversion failed");
         let name = ffi::CString::new(name.as_ref()).expect("variable name conversion failed");
-        unsafe {
-            wren_sys::wrenHasVariable(self.vm, module.as_ptr(), name.as_ptr())
-        }
+        unsafe { wren_sys::wrenHasVariable(self.vm, module.as_ptr(), name.as_ptr()) }
     }
 
     pub fn has_module<M: AsRef<str>>(&self, module: M) -> bool {
         let module = ffi::CString::new(module.as_ref()).expect("module name conversion failed");
-        unsafe {
-            wren_sys::wrenHasModule(self.vm, module.as_ptr())
-        }
+        unsafe { wren_sys::wrenHasModule(self.vm, module.as_ptr()) }
     }
 
     pub fn set_slot_new_list(&self, slot: SlotId) {
@@ -1103,9 +1099,9 @@ impl VM {
         if self.get_slot_type(map_slot) == SlotType::Map {
             Some(unsafe {
                 wren_sys::wrenGetMapContainsKey(
-                    self.vm, 
-                    map_slot as raw::c_int, 
-                    key_slot as raw::c_int
+                    self.vm,
+                    map_slot as raw::c_int,
+                    key_slot as raw::c_int,
                 )
             })
         } else {
@@ -1122,7 +1118,7 @@ impl VM {
                 self.vm,
                 map_slot as raw::c_int,
                 key_slot as raw::c_int,
-                value_slot as raw::c_int 
+                value_slot as raw::c_int,
             )
         }
     }
@@ -1136,7 +1132,7 @@ impl VM {
                 self.vm,
                 map_slot as raw::c_int,
                 key_slot as raw::c_int,
-                value_slot as raw::c_int 
+                value_slot as raw::c_int,
             )
         }
     }
@@ -1150,7 +1146,7 @@ impl VM {
                 self.vm,
                 map_slot as raw::c_int,
                 key_slot as raw::c_int,
-                removed_value_slot as raw::c_int 
+                removed_value_slot as raw::c_int,
             )
         }
     }
@@ -1261,7 +1257,7 @@ impl VM {
 
     pub fn get_version_number(&self) -> i32 {
         unsafe { wren_sys::wrenGetVersionNumber() }
-    } 
+    }
 }
 
 impl Drop for VM {
