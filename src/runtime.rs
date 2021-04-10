@@ -1,12 +1,12 @@
 use crate::{UserData, WrenError};
 use std::{ffi, os::raw};
-use wren_sys::{WrenErrorType, WrenForeignClassMethods, WrenVM};
+use wren_sys::{WrenErrorType, WrenForeignClassMethods, WrenVM, WrenLoadModuleResult};
 
 // Force Wren to use Rust's allocator to allocate memory
 // Done because sometimes Wren forces us to allocate memory and give *it* ownership
 // Rust might not use the standard allocator, so we move Wren to use *our* allocator
 pub extern "C" fn wren_realloc(
-    memory: *mut ffi::c_void, new_size: wren_sys::size_t,
+    memory: *mut ffi::c_void, new_size: wren_sys::size_t, _user_data: *mut ffi::c_void
 ) -> *mut ffi::c_void {
     unsafe {
         if memory.is_null() {
@@ -136,11 +136,11 @@ pub extern "C" fn wren_bind_foreign_class(
     fcm
 }
 
-pub extern "C" fn wren_load_module(vm: *mut WrenVM, name: *const raw::c_char) -> *mut raw::c_char {
+pub extern "C" fn wren_load_module(vm: *mut WrenVM, name: *const raw::c_char) -> WrenLoadModuleResult {
     // The whoooole reason we wrote wren_realloc - to force Wren into Rust's allocation space
     let conf = unsafe { &mut *(wren_sys::wrenGetUserData(vm) as *mut UserData) };
     let module_name = unsafe { ffi::CStr::from_ptr(name) };
-    match conf
+    let source = match conf
         .loader
         .load_script(module_name.to_string_lossy().to_string())
     {
@@ -153,6 +153,12 @@ pub extern "C" fn wren_load_module(vm: *mut WrenVM, name: *const raw::c_char) ->
             })
             .into_raw(),
         None => std::ptr::null_mut(),
+    };
+
+    WrenLoadModuleResult {
+        source,
+        onComplete: None,
+        userData: std::ptr::null_mut()
     }
 }
 

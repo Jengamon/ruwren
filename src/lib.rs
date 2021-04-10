@@ -581,6 +581,7 @@ pub enum SlotType {
     Num,
     Bool,
     List,
+    Map,
     Null,
     String,
     Foreign,
@@ -1000,6 +1001,7 @@ impl VM {
             wren_sys::WrenType_WREN_TYPE_NUM => SlotType::Num,
             wren_sys::WrenType_WREN_TYPE_BOOL => SlotType::Bool,
             wren_sys::WrenType_WREN_TYPE_LIST => SlotType::List,
+            wren_sys::WrenType_WREN_TYPE_MAP => SlotType::Map,
             wren_sys::WrenType_WREN_TYPE_NULL => SlotType::Null,
             wren_sys::WrenType_WREN_TYPE_STRING => SlotType::String,
             wren_sys::WrenType_WREN_TYPE_FOREIGN => SlotType::Foreign,
@@ -1017,9 +1019,33 @@ impl VM {
         }
     }
 
+    pub fn has_variable<M: AsRef<str>, N: AsRef<str>>(&self, module: M, name: N) -> bool {
+        let module = ffi::CString::new(module.as_ref()).expect("module name conversion failed");
+        let name = ffi::CString::new(name.as_ref()).expect("variable name conversion failed");
+        unsafe {
+            wren_sys::wrenHasVariable(self.vm, module.as_ptr(), name.as_ptr())
+        }
+    }
+
+    pub fn has_module<M: AsRef<str>>(&self, module: M) -> bool {
+        let module = ffi::CString::new(module.as_ref()).expect("module name conversion failed");
+        unsafe {
+            wren_sys::wrenHasModule(self.vm, module.as_ptr())
+        }
+    }
+
     pub fn set_slot_new_list(&self, slot: SlotId) {
         self.ensure_slots(slot + 1);
         unsafe { wren_sys::wrenSetSlotNewList(self.vm, slot as raw::c_int) }
+    }
+
+    pub fn get_list_count(&self, slot: SlotId) -> Option<usize> {
+        self.ensure_slots(slot + 1);
+        if self.get_slot_type(slot) == SlotType::List {
+            Some(unsafe { wren_sys::wrenGetListCount(self.vm, slot as raw::c_int) as usize })
+        } else {
+            None
+        }
     }
 
     pub fn insert_in_list(&self, list_slot: SlotId, index: i32, element_slot: SlotId) {
@@ -1048,9 +1074,85 @@ impl VM {
         }
     }
 
-    pub fn get_list_count(&self, slot: SlotId) -> usize {
+    pub fn set_list_element(&self, list_slot: SlotId, index: i32, element_slot: SlotId) {
+        self.ensure_slots(element_slot + 1);
+        self.ensure_slots(list_slot + 1);
+        unsafe {
+            wren_sys::wrenSetListElement(
+                self.vm,
+                list_slot as raw::c_int,
+                index as raw::c_int,
+                element_slot as raw::c_int,
+            )
+        }
+    }
+
+    pub fn set_slot_new_map(&self, slot: SlotId) {
+        self.ensure_slots(slot + 1);
+        unsafe { wren_sys::wrenSetSlotNewMap(self.vm, slot as raw::c_int) }
+    }
+
+    pub fn get_map_count(&self, slot: SlotId) -> usize {
         self.ensure_slots(slot + 1);
         unsafe { wren_sys::wrenGetListCount(self.vm, slot as raw::c_int) as usize }
+    }
+
+    pub fn get_map_contains_key(&self, map_slot: SlotId, key_slot: SlotId) -> Option<bool> {
+        self.ensure_slots(map_slot + 1);
+        self.ensure_slots(key_slot + 1);
+        if self.get_slot_type(map_slot) == SlotType::Map {
+            Some(unsafe {
+                wren_sys::wrenGetMapContainsKey(
+                    self.vm, 
+                    map_slot as raw::c_int, 
+                    key_slot as raw::c_int
+                )
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn get_map_value(&self, map_slot: SlotId, key_slot: SlotId, value_slot: SlotId) {
+        self.ensure_slots(map_slot + 1);
+        self.ensure_slots(key_slot + 1);
+        self.ensure_slots(value_slot + 1);
+        unsafe {
+            wren_sys::wrenGetMapValue(
+                self.vm,
+                map_slot as raw::c_int,
+                key_slot as raw::c_int,
+                value_slot as raw::c_int 
+            )
+        }
+    }
+
+    pub fn set_map_value(&self, map_slot: SlotId, key_slot: SlotId, value_slot: SlotId) {
+        self.ensure_slots(map_slot + 1);
+        self.ensure_slots(key_slot + 1);
+        self.ensure_slots(value_slot + 1);
+        unsafe {
+            wren_sys::wrenGetMapValue(
+                self.vm,
+                map_slot as raw::c_int,
+                key_slot as raw::c_int,
+                value_slot as raw::c_int 
+            )
+        }
+    }
+
+    pub fn remove_map_value(&self, map_slot: SlotId, key_slot: SlotId, removed_value_slot: SlotId) {
+        self.ensure_slots(map_slot + 1);
+        self.ensure_slots(key_slot + 1);
+        self.ensure_slots(removed_value_slot + 1);
+        unsafe {
+            wren_sys::wrenGetMapValue(
+                self.vm,
+                map_slot as raw::c_int,
+                key_slot as raw::c_int,
+                removed_value_slot as raw::c_int 
+            )
+        }
     }
 
     pub fn get_slot_foreign<T: 'static + ClassObject>(&self, slot: SlotId) -> Option<&T> {
@@ -1156,6 +1258,10 @@ impl VM {
     pub fn abort_fiber(&self, slot: SlotId) {
         unsafe { wren_sys::wrenAbortFiber(self.vm, slot as raw::c_int) }
     }
+
+    pub fn get_version_number(&self) -> i32 {
+        unsafe { wren_sys::wrenGetVersionNumber() }
+    } 
 }
 
 impl Drop for VM {
