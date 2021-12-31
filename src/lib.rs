@@ -1132,7 +1132,7 @@ impl VM {
         self.ensure_slots(key_slot + 1);
         self.ensure_slots(value_slot + 1);
         unsafe {
-            wren_sys::wrenGetMapValue(
+            wren_sys::wrenSetMapValue(
                 self.vm,
                 map_slot as raw::c_int,
                 key_slot as raw::c_int,
@@ -1146,7 +1146,7 @@ impl VM {
         self.ensure_slots(key_slot + 1);
         self.ensure_slots(removed_value_slot + 1);
         unsafe {
-            wren_sys::wrenGetMapValue(
+            wren_sys::wrenRemoveMapValue(
                 self.vm,
                 map_slot as raw::c_int,
                 key_slot as raw::c_int,
