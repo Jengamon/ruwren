@@ -17,7 +17,7 @@ mod runtime;
 mod tests;
 
 #[derive(Debug)]
-/// Directly used by [`wren_error`](crate::runtime::wren_error) to report errors
+/// Directly internally to report errors
 pub enum WrenError {
     Compile(String, i32, String),
     Runtime(String),
@@ -135,7 +135,7 @@ struct RuntimeClass {
 }
 
 #[derive(Debug, Clone, Default)]
-/// A container for [`RuntimeClass`]es
+/// A container for `RuntimeClass` structs
 pub struct Module {
     classes: HashMap<String, RuntimeClass>,
 }
@@ -213,7 +213,7 @@ pub struct ForeignObject<T> {
 ///
 /// Also internally creates all the necessary extern "C" functions for Wren's callbacks
 ///
-/// See examples forlder for the syntax
+/// See examples folder for the syntax
 #[macro_export]
 macro_rules! create_module {
     (
@@ -576,6 +576,7 @@ pub struct UserData {
     loader: Box<dyn ModuleScriptLoader>,
 }
 
+/// Represents Wren slot types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SlotType {
     Num,
@@ -590,6 +591,7 @@ pub enum SlotType {
 
 pub type SlotId = usize;
 
+/// Represents Wren function signatures
 #[derive(Debug, Clone)]
 pub enum FunctionSignature {
     Function { name: String, arity: usize },
@@ -623,6 +625,7 @@ impl FunctionSignature {
         }
     }
 
+    /// Get number of arguments this function signature would require
     pub fn arity(&self) -> usize {
         match self {
             FunctionSignature::Function { arity, .. } => *arity,
@@ -632,15 +635,18 @@ impl FunctionSignature {
     }
 }
 
+/// High-level wrapper around a Wren VM
 #[derive(Debug, Clone)]
 pub struct VMWrapper(EVM);
 
 impl VMWrapper {
+    /// Calls a given function from its signature
     pub fn call(&self, signature: FunctionSignature) -> Result<(), VMError> {
         let handle = self.make_call_handle(signature);
         self.call_handle(&handle)
     }
 
+    /// Calls a given function from its handle
     pub fn call_handle(&self, handle: &FunctionHandle) -> Result<(), VMError> {
         let vm = self.0.borrow();
         match unsafe { wren_sys::wrenCall(vm.vm, handle.0.handle) } {
@@ -672,6 +678,7 @@ impl VMWrapper {
         }
     }
 
+    /// Interprets a given string as Wren code
     pub fn interpret<M: AsRef<str>, C: AsRef<str>>(
         &self, module: M, code: C,
     ) -> Result<(), VMError> {
@@ -720,6 +727,7 @@ impl VMWrapper {
         }
     }
 
+    /// Allows access to the internal VM wrapper object
     pub fn execute<T, F>(&self, f: F) -> T
     where
         F: FnOnce(&VM) -> T,
@@ -727,6 +735,7 @@ impl VMWrapper {
         f(&self.0.borrow())
     }
 
+    /// Gets a handle to a value in a certain slot
     pub fn get_slot_handle(&self, slot: SlotId) -> Rc<Handle> {
         Rc::new(Handle {
             handle: unsafe { wren_sys::wrenGetSlotHandle(self.0.borrow().vm, slot as raw::c_int) },
@@ -735,12 +744,14 @@ impl VMWrapper {
         })
     }
 
+    /// Sets the value in a certain slot to the value of a handle
     pub fn set_slot_handle(&self, slot: SlotId, handle: &Handle) {
         unsafe {
             wren_sys::wrenSetSlotHandle(self.0.borrow().vm, slot as raw::c_int, handle.handle)
         }
     }
 
+    /// Create a callable handle, that can be used with [`call_handle`](VMWrapper::call_handle)
     pub fn make_call_handle(&self, signature: FunctionSignature) -> Rc<FunctionHandle> {
         VM::make_call_handle(self.0.borrow().vm, signature)
     }
@@ -751,6 +762,7 @@ impl VMWrapper {
     }
 }
 
+/// Allows for the customization of a Wren VM
 pub struct VMConfig {
     printer: Box<dyn Printer>,
     script_loader: Box<dyn ModuleScriptLoader>,
@@ -1179,8 +1191,8 @@ impl VM {
         }
     }
 
-    /// Looks up the specifed [module] for the specified [class]
-    /// If it's type matches with type T, will create a new instance in [slot]
+    /// Looks up the specified module for the given class
+    /// If it's type matches with type T, will create a new instance in the given slot
     ///  
     /// WARNING: This *will* overwrite slot 0, so be careful.
     pub fn set_slot_new_foreign<M: AsRef<str>, C: AsRef<str>, T: 'static + ClassObject>(
