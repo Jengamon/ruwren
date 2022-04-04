@@ -1244,8 +1244,10 @@ impl VM {
                                 mem::size_of::<ForeignObject<T>>() as wren_sys::size_t,
                             );
 
-                            // Move the ForeignObject into the pointer
-                            std::ptr::write(wptr as *mut _, new_obj);
+                            if !wptr.is_null() {
+                                // Move the ForeignObject into the pointer
+                                std::ptr::write(wptr as *mut _, new_obj);
+                            }
 
                             // Reinterpret the pointer as an object if we were successful
                             match (wptr as *mut ForeignObject<T>).as_mut() {
