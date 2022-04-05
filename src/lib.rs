@@ -1034,17 +1034,17 @@ impl VM {
         module: M,
         name: N,
         slot: SlotId,
-    ) -> Option<()> {
+    ) -> bool {
         self.ensure_slots(slot + 1);
         if !self.has_variable(&module, &name) {
-            return None;
+            return false;
         }
         let module = ffi::CString::new(module.as_ref()).expect("module name conversion failed");
         let name = ffi::CString::new(name.as_ref()).expect("variable name conversion failed");
         unsafe {
             wren_sys::wrenGetVariable(self.vm, module.as_ptr(), name.as_ptr(), slot as raw::c_int)
         }
-        Some(())
+        true
     }
 
     pub fn has_variable<M: AsRef<str>, N: AsRef<str>>(&self, module: M, name: N) -> bool {
