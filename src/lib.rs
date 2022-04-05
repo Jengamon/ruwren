@@ -1026,16 +1026,31 @@ impl VM {
         }
     }
 
-    pub fn get_variable<M: AsRef<str>, N: AsRef<str>>(&self, module: M, name: N, slot: SlotId) {
+    /// Returns Some(()) if the variable was found and stored in the given slot
+    ///
+    /// Returns None if the variable does not exist
+    pub fn get_variable<M: AsRef<str>, N: AsRef<str>>(
+        &self,
+        module: M,
+        name: N,
+        slot: SlotId,
+    ) -> Option<()> {
         self.ensure_slots(slot + 1);
+        if !self.has_variable(&module, &name) {
+            return None;
+        }
         let module = ffi::CString::new(module.as_ref()).expect("module name conversion failed");
         let name = ffi::CString::new(name.as_ref()).expect("variable name conversion failed");
         unsafe {
             wren_sys::wrenGetVariable(self.vm, module.as_ptr(), name.as_ptr(), slot as raw::c_int)
         }
+        Some(())
     }
 
     pub fn has_variable<M: AsRef<str>, N: AsRef<str>>(&self, module: M, name: N) -> bool {
+        if !self.has_module(&module) {
+            return false;
+        }
         let module = ffi::CString::new(module.as_ref()).expect("module name conversion failed");
         let name = ffi::CString::new(name.as_ref()).expect("variable name conversion failed");
         unsafe { wren_sys::wrenHasVariable(self.vm, module.as_ptr(), name.as_ptr()) }
