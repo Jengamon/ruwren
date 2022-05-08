@@ -1288,10 +1288,10 @@ impl VM {
         slot: SlotId,
         scratch: SlotId,
     ) -> Result<&mut T, ForeignSendError> {
-        self.ensure_slots(slot + 1);
+        self.ensure_slots(slot.max(scratch) + 1);
         let conf = unsafe { &mut *(wren_sys::wrenGetUserData(self.vm) as *mut UserData) };
 
-        self.ensure_slots((slot + 1) as usize);
+        self.ensure_slots((slot.max(scratch) + 1) as usize);
         // Even if slot == 0, we can just load the class into slot 0, then use wrenSetSlotNewForeign to "create" a new object
         match conf
             .library
@@ -1310,7 +1310,7 @@ impl VM {
                         type_id: any::TypeId::of::<T>(),
                     };
 
-                    // Load the Wren class object into slot 0.
+                    // Load the Wren class object into scratch slot.
                     self.get_variable(module, class, scratch);
 
                     // Make sure the class isn't null (undeclared in Wren code)
