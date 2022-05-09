@@ -44,6 +44,22 @@ impl Math {
             panic!("Could not send RawPoint object");
         }
     }
+
+    fn opposite_points(vm: &super::VM) {
+        vm.ensure_slots(3);
+        vm.set_slot_new_list(0);
+        let send = vm.set_slot_new_foreign_scratch("main", "RawPoint", Point { x: 1.0 }, 1, 2);
+        if send.is_err() {
+            panic!("Could not send RawPoint object");
+        }
+        vm.insert_in_list(0, 0, 1);
+
+        let send = vm.set_slot_new_foreign_scratch("main", "RawPoint", Point { x: -1.0 }, 1, 2);
+        if send.is_err() {
+            panic!("Could not send RawPoint object");
+        }
+        vm.insert_in_list(0, 1, 1);
+    }
 }
 
 create_module! {
@@ -54,7 +70,8 @@ create_module! {
 
     class("Math") crate::tests::Math => math {
         static(fn "add5", 1) add5,
-        static(fn "pointy", 0) pointy
+        static(fn "pointy", 0) pointy,
+        static(fn "opposite_points", 0)  opposite_points
     }
 
     module => main
@@ -227,6 +244,7 @@ fn foreign_instance() {
     class Math {
         foreign static add5(a)
         foreign static pointy()
+        foreign static opposite_points()
     }
 
     foreign class RawPoint {
@@ -241,7 +259,10 @@ fn foreign_instance() {
             System.print(elapsedTime)
             var p = Math.pointy()
             System.print(p.x())
-            return Math.add5(16.45)
+            var p_list = Math.opposite_points()
+            //should be zero
+            var list_sum = p_list.map{|a| a.x()}.reduce{|a, b| a + b}
+            return Math.add5(16.45 + list_sum)
         }
     }
     ",
