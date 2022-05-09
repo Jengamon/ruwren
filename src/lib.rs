@@ -1280,6 +1280,73 @@ impl VM {
         }
     }
 
+    pub fn set_slot_new_foreign_scratch<M: AsRef<str>, C: AsRef<str>, T: 'static + ClassObject>(
+        &self,
+        module: M,
+        class: C,
+        object: T,
+        slot: SlotId,
+        scratch: SlotId,
+    ) -> Result<&mut T, ForeignSendError> {
+        self.ensure_slots(slot.max(scratch) + 1);
+        let conf = unsafe { &mut *(wren_sys::wrenGetUserData(self.vm) as *mut UserData) };
+
+        self.ensure_slots((slot.max(scratch) + 1) as usize);
+        // Even if slot == 0, we can just load the class into slot 0, then use wrenSetSlotNewForeign to "create" a new object
+        match conf
+            .library
+            .as_ref()
+            .and_then(|lib| lib.get_foreign_class(module.as_ref(), class.as_ref()))
+        {
+            None => Err(ForeignSendError::NoForeignClass), // Couldn't find the corresponding class
+            Some(runtime_class) => {
+                if runtime_class.type_id == any::TypeId::of::<T>() {
+                    // The Wren foreign class corresponds with this real object.
+                    // We can coerce it and treat this object as that class, even if not instantiated by Wren.
+
+                    // Create the new ForeignObject
+                    let new_obj = ForeignObject {
+                        object: Box::into_raw(Box::new(object)),
+                        type_id: any::TypeId::of::<T>(),
+                    };
+
+                    // Load the Wren class object into scratch slot.
+                    self.get_variable(module, class, scratch);
+
+                    // Make sure the class isn't null (undeclared in Wren code)
+                    match self.get_slot_type(scratch) {
+                        SlotType::Null => Err(ForeignSendError::NoWrenClass), // You haven't declared the foreign class to Wren
+                        SlotType::Unknown => unsafe {
+                            // A Wren class
+                            // Create the Wren foreign pointer
+                            let wptr = wren_sys::wrenSetSlotNewForeign(
+                                self.vm,
+                                slot as raw::c_int,
+                                scratch as i32,
+                                mem::size_of::<ForeignObject<T>>() as wren_sys::size_t,
+                            );
+
+                            if !wptr.is_null() {
+                                // Move the ForeignObject into the pointer
+                                std::ptr::write(wptr as *mut _, new_obj);
+                            }
+
+                            // Reinterpret the pointer as an object if we were successful
+                            match (wptr as *mut ForeignObject<T>).as_mut() {
+                                Some(ptr) => Ok(ptr.object.as_mut().unwrap()),
+                                None => Err(ForeignSendError::NoMemory),
+                            }
+                        },
+                        _ => Err(ForeignSendError::NoWrenClass),
+                    }
+                } else {
+                    // The classes do not match. Avoid.
+                    Err(ForeignSendError::ClassMismatch)
+                }
+            }
+        }
+    }
+
     fn make_call_handle<'b>(
         vm: *mut WrenVM,
         signature: FunctionSignature,
