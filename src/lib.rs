@@ -1122,7 +1122,7 @@ impl VM {
     pub fn get_map_count(&self, slot: SlotId) -> Option<usize> {
         self.ensure_slots(slot + 1);
         if self.get_slot_type(slot) == SlotType::Map {
-            Some(unsafe { wren_sys::wrenGetListCount(self.vm, slot as raw::c_int) as usize })
+            Some(unsafe { wren_sys::wrenGetMapCount(self.vm, slot as raw::c_int) as usize })
         } else {
             None
         }
