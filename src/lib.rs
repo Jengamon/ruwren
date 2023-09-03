@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 use std::sync::mpsc::{channel, Receiver, Sender};
-use wren_sys::{WrenConfiguration, WrenHandle, WrenVM};
+use wren_sys::{wrenGetUserData, wrenSetUserData, WrenConfiguration, WrenHandle, WrenVM};
 
 pub use wren_sys;
 
@@ -115,9 +115,7 @@ impl ModuleLibrary {
 
     /// Attempts to find a [`RuntimeClass`] given a `module` name and a `class` name
     fn get_foreign_class<M: AsRef<str>, C: AsRef<str>>(
-        &self,
-        module: M,
-        class: C,
+        &self, module: M, class: C,
     ) -> Option<&RuntimeClass> {
         self.modules
             .get(module.as_ref())
@@ -236,11 +234,12 @@ macro_rules! create_module {
                 pub(in super) extern "C" fn _constructor(vm: *mut $crate::wren_sys::WrenVM) {
                     use $crate::Class;
                     unsafe {
-                        let conf = &mut *($crate::wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
+                        let conf = std::ptr::read_unaligned($crate::wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
+                        let ovm = vm;
                         let vm = std::rc::Weak::upgrade(&conf.vm).expect(&format!("Failed to access VM at {:p}", &conf.vm));
                         let wptr = $crate::wren_sys::wrenSetSlotNewForeign(vm.borrow().vm, 0, 0, std::mem::size_of::<$crate::ForeignObject<$name>>() as $crate::wren_sys::size_t);
                         // Allocate a new object, and move it onto the heap
-                        set_hook(Box::new(|_| {}));
+                        set_hook(Box::new(|_pi| {}));
                         let vm_borrow = AssertUnwindSafe(vm.borrow());
                         let object = match catch_unwind(|| <$name as Class>::initialize(&*vm_borrow)) {
                             Ok(obj) => Some(obj),
@@ -266,16 +265,14 @@ macro_rules! create_module {
                                 type_id: std::any::TypeId::of::<$name>(),
                             });
                         }
+                        std::ptr::write_unaligned($crate::wren_sys::wrenGetUserData(ovm) as *mut $crate::UserData, conf);
                     }
                 }
 
                 pub(in super) extern "C" fn _destructor(data: *mut std::ffi::c_void) {
                     unsafe {
-                        let mut fo: &mut $crate::ForeignObject<$name> = &mut *(data as *mut _);
-                        if !fo.object.is_null() { // If we haven't dropped an object, work on dropping it.
-                            drop(Box::from_raw(fo.object));
-                            fo.object = std::ptr::null_mut();
-                        }
+                        let fo: $crate::ForeignObject<$name> = std::ptr::read_unaligned(data as *mut _);
+                        _ = Box::from_raw(fo.object);
                     }
                 }
 
@@ -343,7 +340,8 @@ macro_rules! create_module {
         pub(in super) unsafe extern "C" fn $s(vm: *mut $crate::wren_sys::WrenVM) {
             use std::panic::{take_hook, set_hook, catch_unwind, AssertUnwindSafe};
 
-            let conf = &mut *($crate::wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
+            let conf = std::ptr::read_unaligned($crate::wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
+            let ovm = vm;
             let vm = std::rc::Weak::upgrade(&conf.vm).expect(&format!("Failed to access VM at {:p}", &conf.vm));
             set_hook(Box::new(|_| {}));
             let vm_borrow = AssertUnwindSafe(vm.borrow());
@@ -363,6 +361,7 @@ macro_rules! create_module {
                 }
             };
             drop(take_hook());
+            std::ptr::write_unaligned($crate::wren_sys::wrenGetUserData(ovm) as *mut $crate::UserData, conf);
         }
     };
 
@@ -370,9 +369,10 @@ macro_rules! create_module {
         pub(in super) unsafe extern "C" fn $inf(vm: *mut $crate::wren_sys::WrenVM) {
             use std::panic::{take_hook, set_hook, catch_unwind, AssertUnwindSafe};
 
-            let conf = &mut *($crate::wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
+            let conf = std::ptr::read_unaligned($crate::wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
+            let ovm = vm;
             let vm = std::rc::Weak::upgrade(&conf.vm).expect(&format!("Failed to access VM at {:p}", &conf.vm));
-            set_hook(Box::new(|_| {}));
+            set_hook(Box::new(|_pi| {}));
             let vm_borrow = AssertUnwindSafe(vm.borrow());
             match catch_unwind(|| {
                 vm_borrow.ensure_slots(1);
@@ -395,6 +395,7 @@ macro_rules! create_module {
                 }
             };
             drop(take_hook());
+            std::ptr::write_unaligned($crate::wren_sys::wrenGetUserData(ovm) as *mut $crate::UserData, conf);
         }
     }
 }
@@ -682,9 +683,7 @@ impl VMWrapper {
 
     /// Interprets a given string as Wren code
     pub fn interpret<M: AsRef<str>, C: AsRef<str>>(
-        &self,
-        module: M,
-        code: C,
+        &self, module: M, code: C,
     ) -> Result<(), VMError> {
         let module = ffi::CString::new(module.as_ref()).expect("module name conversion failed");
         let code = ffi::CString::new(code.as_ref()).expect("code conversion failed");
@@ -1030,10 +1029,7 @@ impl VM {
     ///
     /// Returns None if the variable does not exist
     pub fn get_variable<M: AsRef<str>, N: AsRef<str>>(
-        &self,
-        module: M,
-        name: N,
-        slot: SlotId,
+        &self, module: M, name: N, slot: SlotId,
     ) -> bool {
         self.ensure_slots(slot + 1);
         if !self.has_variable(&module, &name) {
@@ -1196,7 +1192,7 @@ impl VM {
         unsafe {
             let ptr = wren_sys::wrenGetSlotForeign(self.vm, slot as raw::c_int);
             if !ptr.is_null() {
-                let fo = &mut *(ptr as *mut ForeignObject<T>);
+                let fo = std::ptr::read_unaligned(ptr as *mut ForeignObject<T>);
                 if fo.type_id == any::TypeId::of::<T>() {
                     // Safe to downcast
                     fo.object.as_mut()
@@ -1215,85 +1211,27 @@ impl VM {
     ///  
     /// WARNING: This *will* overwrite slot 0, so be careful.
     pub fn set_slot_new_foreign<M: AsRef<str>, C: AsRef<str>, T: 'static + ClassObject>(
-        &self,
-        module: M,
-        class: C,
-        object: T,
-        slot: SlotId,
+        &self, module: M, class: C, object: T, slot: SlotId,
     ) -> Result<&mut T, ForeignSendError> {
-        self.ensure_slots(slot + 1);
-        let conf = unsafe { &mut *(wren_sys::wrenGetUserData(self.vm) as *mut UserData) };
-
-        self.ensure_slots((slot + 1) as usize);
-        // Even if slot == 0, we can just load the class into slot 0, then use wrenSetSlotNewForeign to "create" a new object
-        match conf
-            .library
-            .as_ref()
-            .and_then(|lib| lib.get_foreign_class(module.as_ref(), class.as_ref()))
-        {
-            None => Err(ForeignSendError::NoForeignClass), // Couldn't find the corresponding class
-            Some(runtime_class) => {
-                if runtime_class.type_id == any::TypeId::of::<T>() {
-                    // The Wren foreign class corresponds with this real object.
-                    // We can coerce it and treat this object as that class, even if not instantiated by Wren.
-
-                    // Create the new ForeignObject
-                    let new_obj = ForeignObject {
-                        object: Box::into_raw(Box::new(object)),
-                        type_id: any::TypeId::of::<T>(),
-                    };
-
-                    // Load the Wren class object into slot 0.
-                    self.get_variable(module, class, 0);
-
-                    // Make sure the class isn't null (undeclared in Wren code)
-                    match self.get_slot_type(0) {
-                        SlotType::Null => Err(ForeignSendError::NoWrenClass), // You haven't declared the foreign class to Wren
-                        SlotType::Unknown => unsafe {
-                            // A Wren class
-                            // Create the Wren foreign pointer
-                            let wptr = wren_sys::wrenSetSlotNewForeign(
-                                self.vm,
-                                slot as raw::c_int,
-                                0,
-                                mem::size_of::<ForeignObject<T>>() as wren_sys::size_t,
-                            );
-
-                            if !wptr.is_null() {
-                                // Move the ForeignObject into the pointer
-                                std::ptr::write(wptr as *mut _, new_obj);
-                            }
-
-                            // Reinterpret the pointer as an object if we were successful
-                            match (wptr as *mut ForeignObject<T>).as_mut() {
-                                Some(ptr) => Ok(ptr.object.as_mut().unwrap()),
-                                None => Err(ForeignSendError::NoMemory),
-                            }
-                        },
-                        _ => Err(ForeignSendError::NoWrenClass),
-                    }
-                } else {
-                    // The classes do not match. Avoid.
-                    Err(ForeignSendError::ClassMismatch)
-                }
-            }
-        }
+        self.set_slot_new_foreign_scratch(module, class, object, slot, 0)
     }
 
+    /// Looks up the specified module for the given class
+    /// If it's type matches with type T, will create a new instance in the given slot
+    ///  
+    /// WARNING: This *will* overwrite slot `scratch`, so be careful.
     pub fn set_slot_new_foreign_scratch<M: AsRef<str>, C: AsRef<str>, T: 'static + ClassObject>(
-        &self,
-        module: M,
-        class: C,
-        object: T,
-        slot: SlotId,
-        scratch: SlotId,
+        &self, module: M, class: C, object: T, slot: SlotId, scratch: SlotId,
     ) -> Result<&mut T, ForeignSendError> {
         self.ensure_slots(slot.max(scratch) + 1);
-        let conf = unsafe { &mut *(wren_sys::wrenGetUserData(self.vm) as *mut UserData) };
+        let conf = unsafe {
+            std::ptr::read_unaligned(wren_sys::wrenGetUserData(self.vm) as *mut UserData)
+        };
 
+        // Why did I put this here? (well the equivalent in the original method...)
         self.ensure_slots((slot.max(scratch) + 1) as usize);
         // Even if slot == 0, we can just load the class into slot 0, then use wrenSetSlotNewForeign to "create" a new object
-        match conf
+        let ret = match conf
             .library
             .as_ref()
             .and_then(|lib| lib.get_foreign_class(module.as_ref(), class.as_ref()))
@@ -1322,7 +1260,7 @@ impl VM {
                             let wptr = wren_sys::wrenSetSlotNewForeign(
                                 self.vm,
                                 slot as raw::c_int,
-                                scratch as i32,
+                                scratch as raw::c_int,
                                 mem::size_of::<ForeignObject<T>>() as wren_sys::size_t,
                             );
 
@@ -1344,12 +1282,16 @@ impl VM {
                     Err(ForeignSendError::ClassMismatch)
                 }
             }
+        };
+
+        unsafe {
+            std::ptr::write_unaligned(wrenGetUserData(self.vm) as *mut UserData, conf);
         }
+        ret
     }
 
     fn make_call_handle<'b>(
-        vm: *mut WrenVM,
-        signature: FunctionSignature,
+        vm: *mut WrenVM, signature: FunctionSignature,
     ) -> Rc<FunctionHandle<'b>> {
         let signature =
             ffi::CString::new(signature.as_wren_string()).expect("signature conversion failed");

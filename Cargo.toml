@@ -1,8 +1,8 @@
 [package]
 name = "ruwren"
-version = "0.4.2"
+version = "0.4.3"
 authors = ["Jengamon <bob.hostern@gmail.com>"]
-edition = "2018"
+edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Jengamon/ruwren"
 homepage = "http://wren.io"
