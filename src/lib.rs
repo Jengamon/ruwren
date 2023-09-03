@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 use std::sync::mpsc::{channel, Receiver, Sender};
-use wren_sys::{wrenGetUserData, wrenSetUserData, WrenConfiguration, WrenHandle, WrenVM};
+use wren_sys::{wrenGetUserData, WrenConfiguration, WrenHandle, WrenVM};
 
 pub use wren_sys;
 
