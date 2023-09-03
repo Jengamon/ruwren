@@ -271,8 +271,12 @@ macro_rules! create_module {
 
                 pub(in super) extern "C" fn _destructor(data: *mut std::ffi::c_void) {
                     unsafe {
-                        let fo: $crate::ForeignObject<$name> = std::ptr::read_unaligned(data as *mut _);
-                        _ = Box::from_raw(fo.object);
+                        let mut fo: $crate::ForeignObject<$name> = std::ptr::read_unaligned(data as *mut _);
+                        if !fo.object.is_null() {
+                            _ = Box::from_raw(fo.object);
+                        }
+                        fo.object = std::ptr::null_mut();
+                        std::ptr::write_unaligned(data as *mut _, fo);
                     }
                 }
 
@@ -1193,13 +1197,15 @@ impl VM {
             let ptr = wren_sys::wrenGetSlotForeign(self.vm, slot as raw::c_int);
             if !ptr.is_null() {
                 let fo = std::ptr::read_unaligned(ptr as *mut ForeignObject<T>);
-                if fo.type_id == any::TypeId::of::<T>() {
+                let ret = if fo.type_id == any::TypeId::of::<T>() {
                     // Safe to downcast
                     fo.object.as_mut()
                 } else {
                     // Incorrect type, unsafe to downcast
                     None
-                }
+                };
+                std::ptr::write_unaligned(ptr as *mut ForeignObject<T>, fo);
+                ret
             } else {
                 None
             }
