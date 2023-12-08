@@ -17,6 +17,7 @@ members = [".", "ruwren_macros"]
 
 [dependencies]
 ruwren-sys = "0.4"
+ruwren_macros = { version = "0.1", path = "ruwren_macros" }
 
 [dev-dependencies]
 criterion = "0.3"

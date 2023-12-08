@@ -39,6 +39,14 @@ struct FooClass {
     sbar: i32,
 }
 
+impl From<Foo> for FooClass {
+    fn from(value: Foo) -> Self {
+        Self {
+            sbar: value.sbar,
+        }
+    }
+}
+
 impl FooClass {
     fn static_fn(&mut self, num: i32) -> i32 {
         self.sbar += num;
@@ -52,13 +60,13 @@ impl FooClass {
         method_data.returning(vm, Self::static_fn(self, arg0))
     }
 
-    fn new(&mut self, bar: f64) -> Foo {
+    fn new(&mut self, bar: f64) -> FooInstance {
         Foo { bar }
     }
 }
 
 impl Class for FooClass {
-    type Instance = Foo;
+    type Instance = FooInstance;
 
     fn name(&self) -> &'static str {
         "Foo"
@@ -76,11 +84,19 @@ impl Class for FooClass {
     }
 }
 
-struct Foo {
+struct FooInstance {
     bar: f64,
 }
 
-impl Registerable for Foo {
+impl From<Foo> for FooInstance {
+    fn from(value: Foo) -> Self {
+        Self {
+            bar: value.bar,
+        }
+    }
+}
+
+impl Registerable for FooInstance {
     type Class = FooClass;
 }
 
@@ -90,7 +106,7 @@ pub fn register_foreign<T: Registerable>(ml: &mut ModuleLibrary) {
 }
 
 // Class impl
-impl Foo {
+impl FooInstance {
     fn instance(&self, class: &mut FooClass) -> f64 {
         self.bar
     }
