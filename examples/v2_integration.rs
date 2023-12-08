@@ -14,7 +14,7 @@ struct Unit;
 struct NewType(u8);
 
 #[derive(WrenObject)]
-struct Tuple(u8, u8);
+struct Tuple(u8, u8, #[wren_field(static_member)] u8, u8);
 
 #[wren_impl]
 impl Foo {

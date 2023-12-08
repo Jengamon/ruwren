@@ -3,7 +3,7 @@ use proc_macro2::Span;
 use quote::{quote, quote_spanned};
 use syn::{
     braced, parse::Parse, parse_macro_input, punctuated::Punctuated, spanned::Spanned, DeriveInput,
-    ImplItem, ImplItemFn, Token, Type, Visibility,
+    ImplItem, ImplItemFn, Index, Token, Type, Visibility,
 };
 
 #[derive(FromField, Clone)]
@@ -33,7 +33,11 @@ fn generate_wrapper_type_name(name: &syn::Ident) -> syn::Ident {
 }
 
 fn generate_wrapper_type(wod: &WrenObjectDecl) -> proc_macro2::TokenStream {
+    let source = &wod.ident;
     let wrapper_name = generate_wrapper_type_name(&wod.ident);
+    let class_name = generate_class_type_name(&wod.ident);
+    let inst_name = generate_instance_type_name(&wod.ident);
+
     let vis = &wod.vis;
     let fields = wod
         .data
@@ -47,6 +51,21 @@ fn generate_wrapper_type(wod: &WrenObjectDecl) -> proc_macro2::TokenStream {
     let fvis: Vec<_> = fields.iter().map(|f| f.vis.clone()).collect();
 
     if let Some(fnames) = fnames {
+        let fields: Vec<_> = fields
+            .iter()
+            .map(|f| {
+                let name = &f.ident;
+                let source = if f.static_member {
+                    syn::Ident::new("class", Span::call_site())
+                } else {
+                    syn::Ident::new("instance", Span::call_site())
+                };
+                quote_spanned!(f.ident.span()=>
+                    #name: &mut #source.#name
+                )
+            })
+            .collect();
+
         quote! {
             #vis struct #wrapper_name<'a> {
                 _marker: std::marker::PhantomData<&'a ()>,
@@ -54,10 +73,223 @@ fn generate_wrapper_type(wod: &WrenObjectDecl) -> proc_macro2::TokenStream {
                     #fvis #fnames: &'a mut #ftys
                 ),*
             }
+
+            impl<'a> From<&'a mut #source> for #wrapper_name<'a> {
+                fn from(src: &'a mut #source) -> Self {
+                    Self {
+                        _marker: std::marker::PhantomData,
+                        #(
+                            #fnames: &mut src.#fnames
+                        ),*
+                    }
+                }
+            }
+
+            impl<'a> From<(&'a mut #class_name, &'a mut #inst_name)> for #wrapper_name<'a> {
+                fn from((class, instance): (&'a mut #class_name, &'a mut #inst_name)) -> Self {
+                    Self {
+                        _marker: std::marker::PhantomData,
+                        #(
+                            #fields
+                        ),*
+                    }
+                }
+            }
         }
     } else {
+        let indices: Vec<_> = (0..fields.len()).map(|i| Index::from(i)).collect();
+        let fields: Vec<_> = fields
+            .iter()
+            .scan((0, 0), |(ref mut ci, ref mut ii), f| {
+                let (index, source) = if f.static_member {
+                    *ci += 1;
+                    (
+                        Index::from(*ci - 1),
+                        syn::Ident::new("class", Span::call_site()),
+                    )
+                } else {
+                    *ii += 1;
+                    (
+                        Index::from(*ii - 1),
+                        syn::Ident::new("instance", Span::call_site()),
+                    )
+                };
+                Some(quote_spanned!(f.ident.span()=>
+                    &mut #source.#index
+                ))
+            })
+            .collect();
+
         quote! {
             #vis struct #wrapper_name<'a>(std::marker::PhantomData<&'a ()>, #(#fvis &'a mut #ftys),*);
+
+            impl<'a> From<&'a mut #source> for #wrapper_name<'a> {
+                fn from(src: &'a mut #source) -> Self {
+                    Self (
+                        std::marker::PhantomData,
+                        #(
+                            &mut src.#indices
+                        ),*
+                    )
+                }
+            }
+
+            impl<'a> From<(&'a mut #class_name, &'a mut #inst_name)> for #wrapper_name<'a> {
+                fn from((class, instance): (&'a mut #class_name, &'a mut #inst_name)) -> Self {
+                    Self (
+                        std::marker::PhantomData,
+                        #(
+                            #fields
+                        ),*
+                    )
+                }
+            }
+        }
+    }
+}
+
+fn generate_class_type_name(name: &syn::Ident) -> syn::Ident {
+    syn::Ident::new(&format!("{name}Class"), Span::call_site())
+}
+
+fn generate_class_type(wod: &WrenObjectDecl) -> proc_macro2::TokenStream {
+    let source = &wod.ident;
+    let class_name = generate_class_type_name(&wod.ident);
+    let vis = &wod.vis;
+    let fields = wod
+        .data
+        .as_ref()
+        .take_struct()
+        .expect("only structs supported (for now)")
+        .fields;
+    let all_fields: Vec<_> = fields
+        .into_iter()
+        .enumerate()
+        .map(|(i, f)| (Index::from(i), f))
+        .collect();
+    let fields: Vec<_> = all_fields
+        .iter()
+        .filter_map(|(_, f)| if f.static_member { Some(f) } else { None })
+        .collect();
+
+    let fnames: Option<Vec<_>> = fields.iter().map(|f| f.ident.clone()).collect();
+    let ftys: Vec<_> = fields.iter().map(|f| f.ty.clone()).collect();
+    let fvis: Vec<_> = fields.iter().map(|f| f.vis.clone()).collect();
+
+    if let Some(fnames) = fnames {
+        quote! {
+            #vis struct #class_name {
+                #(
+                    #fvis #fnames: #ftys
+                ),*
+            }
+
+            impl From<#source> for #class_name {
+                fn from(value: #source) -> Self {
+                    Self {
+                        #(
+                            #fnames: value.#fnames
+                        ),*
+                    }
+                }
+            }
+
+            impl ruwren::foreign_v2::V2Class for #class_name {
+                fn name() -> &'static str {
+                    stringify!(#source)
+                }
+            }
+        }
+    } else {
+        let findices: Vec<_> = all_fields
+            .iter()
+            .filter_map(|(i, f)| if f.static_member { Some(i) } else { None })
+            .collect();
+        quote! {
+            #vis struct #class_name(#(#fvis #ftys),*);
+
+            impl From<#source> for #class_name {
+                fn from(value: #source) -> Self {
+                    Self (
+                        #(
+                            value.#findices
+                        ),*
+                    )
+                }
+            }
+
+            impl ruwren::foreign_v2::V2Class for #class_name {
+                fn name() -> &'static str {
+                    stringify!(#source)
+                }
+            }
+        }
+    }
+}
+
+fn generate_instance_type_name(name: &syn::Ident) -> syn::Ident {
+    syn::Ident::new(&format!("{name}Instance"), Span::call_site())
+}
+
+fn generate_instance_type(wod: &WrenObjectDecl) -> proc_macro2::TokenStream {
+    let source = &wod.ident;
+    let inst_name = generate_instance_type_name(&wod.ident);
+    let vis = &wod.vis;
+    let fields = wod
+        .data
+        .as_ref()
+        .take_struct()
+        .expect("only structs supported (for now)")
+        .fields;
+    let all_fields: Vec<_> = fields
+        .into_iter()
+        .enumerate()
+        .map(|(i, f)| (Index::from(i), f))
+        .collect();
+    let fields: Vec<_> = all_fields
+        .iter()
+        .filter_map(|(_, f)| if !f.static_member { Some(f) } else { None })
+        .collect();
+
+    let fnames: Option<Vec<_>> = fields.iter().map(|f| f.ident.clone()).collect();
+    let ftys: Vec<_> = fields.iter().map(|f| f.ty.clone()).collect();
+    let fvis: Vec<_> = fields.iter().map(|f| f.vis.clone()).collect();
+
+    if let Some(fnames) = fnames {
+        quote! {
+            #vis struct #inst_name {
+                #(
+                    #fvis #fnames: #ftys
+                ),*
+            }
+
+            impl From<#source> for #inst_name {
+                fn from(value: #source) -> Self {
+                    Self {
+                        #(
+                            #fnames: value.#fnames
+                        ),*
+                    }
+                }
+            }
+        }
+    } else {
+        let findices: Vec<_> = all_fields
+            .iter()
+            .filter_map(|(i, f)| if !f.static_member { Some(i) } else { None })
+            .collect();
+        quote! {
+            #vis struct #inst_name(#(#fvis #ftys),*);
+
+            impl From<#source> for #inst_name {
+                fn from(value: #source) -> Self {
+                    Self (
+                        #(
+                            value.#findices
+                        ),*
+                    )
+                }
+            }
         }
     }
 }
@@ -74,9 +306,13 @@ pub fn wren_object_derive(stream: proc_macro::TokenStream) -> proc_macro::TokenS
     };
 
     let wrapper_type = generate_wrapper_type(&wren_object_data);
+    let class_type = generate_class_type(&wren_object_data);
+    let instance_type = generate_instance_type(&wren_object_data);
 
     let expanded = quote! {
         #wrapper_type
+        #class_type
+        #instance_type
     };
 
     proc_macro::TokenStream::from(expanded)
