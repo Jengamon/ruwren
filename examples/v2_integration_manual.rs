@@ -10,6 +10,7 @@ struct Foo {
 
 // Derive macro
 struct FooWrapper<'a> {
+    _marker: std::marker::PhantomData<&'a ()>,
     bar: &'a mut f64,
     sbar: &'a mut i32,
 }
@@ -17,6 +18,7 @@ struct FooWrapper<'a> {
 impl<'a> From<(&'a mut FooClass, &'a mut FooInstance)> for FooWrapper<'a> {
     fn from((class, instance): (&'a mut FooClass, &'a mut FooInstance)) -> Self {
         Self {
+            _marker: std::marker::PhantomData,
             bar: &mut instance.bar,
             sbar: &mut class.sbar,
         }
@@ -26,6 +28,7 @@ impl<'a> From<(&'a mut FooClass, &'a mut FooInstance)> for FooWrapper<'a> {
 impl<'a> From<&'a mut Foo> for FooWrapper<'a> {
     fn from(value: &'a mut Foo) -> Self {
         Self {
+            _marker: std::marker::PhantomData,
             bar: &mut value.bar,
             sbar: &mut value.sbar,
         }

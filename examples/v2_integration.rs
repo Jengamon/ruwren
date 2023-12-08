@@ -7,6 +7,15 @@ struct Foo {
     sbar: i32,
 }
 
+#[derive(WrenObject)]
+struct Unit;
+
+#[derive(WrenObject)]
+struct NewType(u8);
+
+#[derive(WrenObject)]
+struct Tuple(u8, u8);
+
 #[wren_impl]
 impl Foo {
     #[wren_impl(allocator)]
@@ -40,9 +49,9 @@ impl Foo {
     }
 
     #[wren_impl(instance)]
-    // This is given a full Foo, not FooClass or FooInstance
+    // This is given a full Foo(Wrapper), not FooClass or FooInstance
     fn instance(&self) -> f64 {
-        self.bar
+        *self.bar
     }
 }
 

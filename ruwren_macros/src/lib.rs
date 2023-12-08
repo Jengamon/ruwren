@@ -1,11 +1,12 @@
 use darling::{ast::NestedMeta, FromAttributes, FromDeriveInput, FromField, FromMeta};
-use quote::quote;
+use proc_macro2::Span;
+use quote::{quote, quote_spanned};
 use syn::{
-    braced, parse::Parse, parse_macro_input, punctuated::Punctuated, DeriveInput, ImplItem,
-    ImplItemFn, Token, Type, Visibility,
+    braced, parse::Parse, parse_macro_input, punctuated::Punctuated, spanned::Spanned, DeriveInput,
+    ImplItem, ImplItemFn, Token, Type, Visibility,
 };
 
-#[derive(FromField)]
+#[derive(FromField, Clone)]
 #[darling(attributes(wren_field), forward_attrs(allow, doc, cfg))]
 struct WrenObjectField {
     ident: Option<syn::Ident>,
@@ -27,6 +28,40 @@ struct WrenObjectDecl {
     data: darling::ast::Data<(), WrenObjectField>,
 }
 
+fn generate_wrapper_type_name(name: &syn::Ident) -> syn::Ident {
+    syn::Ident::new(&format!("{name}Wrapper"), Span::call_site())
+}
+
+fn generate_wrapper_type(wod: &WrenObjectDecl) -> proc_macro2::TokenStream {
+    let wrapper_name = generate_wrapper_type_name(&wod.ident);
+    let vis = &wod.vis;
+    let fields = wod
+        .data
+        .as_ref()
+        .take_struct()
+        .expect("only structs supported (for now)")
+        .fields;
+
+    let fnames: Option<Vec<_>> = fields.iter().map(|f| f.ident.clone()).collect();
+    let ftys: Vec<_> = fields.iter().map(|f| f.ty.clone()).collect();
+    let fvis: Vec<_> = fields.iter().map(|f| f.vis.clone()).collect();
+
+    if let Some(fnames) = fnames {
+        quote! {
+            #vis struct #wrapper_name<'a> {
+                _marker: std::marker::PhantomData<&'a ()>,
+                #(
+                    #fvis #fnames: &'a mut #ftys
+                ),*
+            }
+        }
+    } else {
+        quote! {
+            #vis struct #wrapper_name<'a>(std::marker::PhantomData<&'a ()>, #(#fvis &'a mut #ftys),*);
+        }
+    }
+}
+
 #[proc_macro_derive(WrenObject, attributes(wren_object, wren_field))]
 pub fn wren_object_derive(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(stream as DeriveInput);
@@ -38,7 +73,11 @@ pub fn wren_object_derive(stream: proc_macro::TokenStream) -> proc_macro::TokenS
         }
     };
 
-    let expanded = quote! {};
+    let wrapper_type = generate_wrapper_type(&wren_object_data);
+
+    let expanded = quote! {
+        #wrapper_type
+    };
 
     proc_macro::TokenStream::from(expanded)
 }
