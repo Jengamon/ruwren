@@ -10,6 +10,8 @@ pub use wren_sys;
 mod module_loader;
 pub use module_loader::{BasicFileLoader, NullLoader};
 
+pub mod foreign_v2;
+
 use std::{any, ffi, marker, mem, os::raw};
 
 mod runtime;
@@ -56,7 +58,7 @@ impl std::fmt::Display for VMError {
             VMError::Runtime { error, frames } => {
                 writeln!(fmt, "Runtime Error: {}", error)?;
                 for frame in frames {
-                    if frame.function == "" {
+                    if frame.function.is_empty() {
                         writeln!(fmt, "\tin {}:{}: <constructor>", frame.module, frame.line)?;
                     } else {
                         writeln!(
@@ -544,7 +546,7 @@ where
     }
 }
 
-type EVM = Rc<RefCell<VM>>;
+type Evm = Rc<RefCell<VM>>;
 
 /// Sends strings for printing to an output
 pub trait Printer {
@@ -644,7 +646,7 @@ impl FunctionSignature {
 
 /// High-level wrapper around a Wren VM
 #[derive(Debug, Clone)]
-pub struct VMWrapper(EVM);
+pub struct VMWrapper(Evm);
 
 impl VMWrapper {
     /// Calls a given function from its signature
@@ -692,13 +694,7 @@ impl VMWrapper {
         let module = ffi::CString::new(module.as_ref()).expect("module name conversion failed");
         let code = ffi::CString::new(code.as_ref()).expect("code conversion failed");
         let vm = self.0.borrow();
-        match unsafe {
-            wren_sys::wrenInterpret(
-                vm.vm,
-                module.as_ptr() as *const i8,
-                code.as_ptr() as *const i8,
-            )
-        } {
+        match unsafe { wren_sys::wrenInterpret(vm.vm, module.as_ptr(), code.as_ptr()) } {
             wren_sys::WrenInterpretResult_WREN_RESULT_SUCCESS => Ok(()),
             wren_sys::WrenInterpretResult_WREN_RESULT_COMPILE_ERROR => {
                 match vm.error_recv.try_recv() {
@@ -1214,7 +1210,7 @@ impl VM {
 
     /// Looks up the specified module for the given class
     /// If it's type matches with type T, will create a new instance in the given slot
-    ///  
+    ///
     /// WARNING: This *will* overwrite slot 0, so be careful.
     pub fn set_slot_new_foreign<M: AsRef<str>, C: AsRef<str>, T: 'static + ClassObject>(
         &self, module: M, class: C, object: T, slot: SlotId,
@@ -1224,7 +1220,7 @@ impl VM {
 
     /// Looks up the specified module for the given class
     /// If it's type matches with type T, will create a new instance in the given slot
-    ///  
+    ///
     /// WARNING: This *will* overwrite slot `scratch`, so be careful.
     pub fn set_slot_new_foreign_scratch<M: AsRef<str>, C: AsRef<str>, T: 'static + ClassObject>(
         &self, module: M, class: C, object: T, slot: SlotId, scratch: SlotId,
@@ -1235,7 +1231,7 @@ impl VM {
         };
 
         // Why did I put this here? (well the equivalent in the original method...)
-        self.ensure_slots((slot.max(scratch) + 1) as usize);
+        self.ensure_slots(slot.max(scratch) + 1);
         // Even if slot == 0, we can just load the class into slot 0, then use wrenSetSlotNewForeign to "create" a new object
         let ret = match conf
             .library

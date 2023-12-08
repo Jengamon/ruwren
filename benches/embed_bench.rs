@@ -118,7 +118,7 @@ create_module! {
   module => boxed
 }
 
-const BONAFIDE_MODULE_SRC: &'static str = include_str!("boxed/bonafide.wren");
+const BONAFIDE_MODULE_SRC: &str = include_str!("boxed/bonafide.wren");
 
 fn foreign_box_benchmark(c: &mut Criterion) {
     let mut lib = ModuleLibrary::new();

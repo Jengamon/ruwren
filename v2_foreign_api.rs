@@ -39,14 +39,6 @@ struct FooClass {
     sbar: i32,
 }
 
-impl From<Foo> for FooClass {
-    fn from(value: Foo) -> Self {
-        Self {
-            sbar: value.sbar,
-        }
-    }
-}
-
 impl FooClass {
     fn static_fn(&mut self, num: i32) -> i32 {
         self.sbar += num;
@@ -88,11 +80,13 @@ struct FooInstance {
     bar: f64,
 }
 
-impl From<Foo> for FooInstance {
-    fn from(value: Foo) -> Self {
-        Self {
-            bar: value.bar,
-        }
+impl WrenConvert for FooInstance {
+    fn to_vm(self, vm: &VM, slot: usize) {
+        vm.set_slot_foreign_v2(slot, self)
+    }
+
+    fn from_vm(vm: &VM, slot: usize) -> Self {
+        vm.get_slot_foreign_v2(slot)
     }
 }
 

@@ -66,7 +66,7 @@ create_module!(
     module => maths
 );
 
-static MATHS_MODULE_SRC: &'static str = include_str!("basic_integration/maths.wren");
+static MATHS_MODULE_SRC: &str = include_str!("basic_integration/maths.wren");
 
 fn main() {
     let mut lib = ModuleLibrary::new();

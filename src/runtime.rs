@@ -50,7 +50,7 @@ pub extern "C" fn wren_error(
             conf.error_channel
                 .send(WrenError::Compile(
                     module_str.to_string_lossy().to_string(),
-                    line as i32,
+                    line,
                     message_str.to_string_lossy().to_string(),
                 ))
                 .unwrap();
@@ -69,7 +69,7 @@ pub extern "C" fn wren_error(
             conf.error_channel
                 .send(WrenError::StackTrace(
                     module_str.to_string_lossy().to_string(),
-                    line as i32,
+                    line,
                     message_str.to_string_lossy().to_string(),
                 ))
                 .unwrap();

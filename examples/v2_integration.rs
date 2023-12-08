@@ -1,4 +1,4 @@
-use ruwren_macros::{WrenObject, wren_impl, wren_module};
+use ruwren_macros::{wren_impl, wren_module, WrenObject};
 
 #[derive(WrenObject)]
 struct Foo {
@@ -35,6 +35,4 @@ wren_module! {
     }
 }
 
-fn main() {
-    
-}
+fn main() {}

@@ -12,6 +12,13 @@ impl ModuleScriptLoader for NullLoader {
 pub struct BasicFileLoader {
     base_dir: PathBuf,
 }
+
+impl Default for BasicFileLoader {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BasicFileLoader {
     pub fn new() -> BasicFileLoader {
         BasicFileLoader {
