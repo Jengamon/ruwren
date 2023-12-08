@@ -68,7 +68,7 @@ fn generate_wrapper_type(wod: &WrenObjectDecl) -> proc_macro2::TokenStream {
 
         quote! {
             #vis struct #wrapper_name<'a> {
-                _marker: std::marker::PhantomData<&'a ()>,
+                ___marker: std::marker::PhantomData<&'a ()>,
                 #(
                     #fvis #fnames: &'a mut #ftys
                 ),*
@@ -77,7 +77,7 @@ fn generate_wrapper_type(wod: &WrenObjectDecl) -> proc_macro2::TokenStream {
             impl<'a> From<&'a mut #source> for #wrapper_name<'a> {
                 fn from(src: &'a mut #source) -> Self {
                     Self {
-                        _marker: std::marker::PhantomData,
+                        ___marker: std::marker::PhantomData,
                         #(
                             #fnames: &mut src.#fnames
                         ),*
@@ -88,7 +88,7 @@ fn generate_wrapper_type(wod: &WrenObjectDecl) -> proc_macro2::TokenStream {
             impl<'a> From<(&'a mut #class_name, &'a mut #inst_name)> for #wrapper_name<'a> {
                 fn from((class, instance): (&'a mut #class_name, &'a mut #inst_name)) -> Self {
                     Self {
-                        _marker: std::marker::PhantomData,
+                        ___marker: std::marker::PhantomData,
                         #(
                             #fields
                         ),*

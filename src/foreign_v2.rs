@@ -37,7 +37,7 @@ where
         self.offset + 1 + T::SCRATCH_SPACE
     }
 
-    pub fn value(&self, vm: &VM) -> Option<T> {
+    pub fn value(&self, vm: &VM) -> T {
         T::from_vm(vm, self.slot())
     }
 }

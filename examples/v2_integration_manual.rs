@@ -120,7 +120,7 @@ impl FooClass {
 
     fn vm_static_fn(class: &mut FooClass, vm: &VM) {
         let arg0_calc = InputSlot::first();
-        let ret = FooClass::static_fn(class, arg0_calc.value(vm).unwrap());
+        let ret = FooClass::static_fn(class, arg0_calc.value(vm));
         WrenTo::to_vm(ret, vm, 0)
     }
 
@@ -165,14 +165,19 @@ impl FooClass {
 }
 
 impl<'a> FooWrapper<'a> {
-    fn bar(&mut self, val: f64) {
-        eprintln!("old {} -> new {}", *self.bar, val);
-        *self.bar = val;
+    fn bar(&mut self, val: Option<f64>) {
+        match val {
+            Some(val) => {
+                eprintln!("old {} -> new {}", *self.bar, val);
+                *self.bar = val;
+            }
+            None => eprintln!("arg wasn't a number, ignoring"),
+        }
     }
 
     fn vm_bar(&mut self, vm: &VM) {
         let arg0_calc = InputSlot::first();
-        let ret = self.bar(arg0_calc.value(vm).unwrap());
+        let ret = self.bar(arg0_calc.value(vm));
         WrenTo::to_vm(ret, vm, 0)
     }
 
@@ -300,7 +305,7 @@ impl ForeignItem for FooInstance {
 
     fn construct(class: &mut Self::Class, vm: &ruwren::VM) -> Self {
         let arg0_calc = InputSlot::first();
-        FooClass::construct(class, arg0_calc.value(vm).unwrap())
+        FooClass::construct(class, arg0_calc.value(vm))
     }
 }
 

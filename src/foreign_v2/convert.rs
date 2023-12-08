@@ -1,4 +1,4 @@
-use std::{collections::HashMap, string::FromUtf8Error};
+use std::{any::type_name, collections::HashMap, string::FromUtf8Error};
 
 use crate::{SlotId, SlotType, VM};
 
@@ -24,7 +24,17 @@ pub trait WrenFrom: Sized {
     /// For example, if ScratchSpace == 1, then conversion functions
     /// can use `slot` and `slot + 1` in its implementation
     const SCRATCH_SPACE: usize = 0;
-    fn from_vm(vm: &VM, slot: SlotId) -> Option<Self>;
+    /// Note: This should be *infallible*, so it's rare to have this directly implemented
+    fn from_vm(vm: &VM, slot: SlotId) -> Self;
+}
+
+pub trait WrenTryFrom: Sized {
+    /// VM reserves (1 + SCRATCH_SPACE) when converting
+    ///
+    /// For example, if ScratchSpace == 1, then conversion functions
+    /// can use `slot` and `slot + 1` in its implementation
+    const SCRATCH_SPACE: usize = 0;
+    fn try_from_vm(vm: &VM, slot: SlotId) -> Option<Self>;
 }
 
 impl<T: WrenAtom> WrenTo for T {
@@ -33,12 +43,28 @@ impl<T: WrenAtom> WrenTo for T {
     }
 }
 
-impl<T: WrenAtom> WrenFrom for T {
-    fn from_vm(vm: &VM, slot: SlotId) -> Option<Self>
+impl<T: WrenAtom> WrenTryFrom for T {
+    fn try_from_vm(vm: &VM, slot: SlotId) -> Option<Self>
     where
         Self: Sized,
     {
         <Self as WrenAtom>::from_vm(vm, slot)
+    }
+}
+
+impl<T: WrenTryFrom> WrenFrom for T {
+    fn from_vm(vm: &VM, slot: SlotId) -> Self {
+        T::try_from_vm(vm, slot).expect(&format!(
+            "expected slot {} to be type {}",
+            slot,
+            type_name::<T>()
+        ))
+    }
+}
+
+impl<T: WrenTryFrom> WrenFrom for Option<T> {
+    fn from_vm(vm: &VM, slot: SlotId) -> Self {
+        T::try_from_vm(vm, slot)
     }
 }
 
@@ -170,13 +196,13 @@ where
     }
 }
 
-impl<const N: usize, T> WrenFrom for [T; N]
+impl<const N: usize, T> WrenTryFrom for [T; N]
 where
     T: WrenAtom,
 {
     const SCRATCH_SPACE: usize = 1;
 
-    fn from_vm(vm: &VM, slot: SlotId) -> Option<Self>
+    fn try_from_vm(vm: &VM, slot: SlotId) -> Option<Self>
     where
         Self: Sized,
     {
@@ -213,13 +239,13 @@ where
     }
 }
 
-impl<T> WrenFrom for Vec<T>
+impl<T> WrenTryFrom for Vec<T>
 where
     T: WrenAtom,
 {
     const SCRATCH_SPACE: usize = 1;
 
-    fn from_vm(vm: &VM, slot: SlotId) -> Option<Self>
+    fn try_from_vm(vm: &VM, slot: SlotId) -> Option<Self>
     where
         Self: Sized,
     {
