@@ -11,16 +11,15 @@ impl Foo {
     // The return type of any method marked #[constructor] *must* be Self.
     // Only one method may be marked constructor for any #[wren_impl]
     fn new(bar: f64) -> Self {
-        Foo { bar }
+        Foo { bar, sbar: 0 }
     }
 
-    // You are only allowed to return T, things that can be converted to [T] or [(K, T)] where K and T implement the Wren conversion trait
-    // "class: &mut XClass" is injected into the function parameters for a wren object X
+    #[instance]
+    // So self *looks* like Foo, but it's actually FooWrapper
     fn instance(&self) -> f64 {
         self.bar
     }
 
-    #[static_fn]
     fn static_fn(&mut self, num: i32) -> i32 {
         self.sbar += num;
         self.sbar
@@ -34,15 +33,42 @@ wren_module! {
 }
 
 // Should expand to
-#[derive(Default)]
+struct FooWrapper<'a> {
+    bar: &'a mut f64,
+    sbar: &'a mut i32,
+}
+
+impl<'a> From<(&'a mut FooClass, &'a mut FooInstance)> for FooWrapper<'a> {
+    fn from((class, instance): (&'a mut FooClass, &'a mut FooInstance)) -> Self {
+        Self {
+            bar: &mut instance.bar,
+            sbar: &mut class.sbar,
+        }
+    }
+}
+
 struct FooClass {
     sbar: i32,
 }
 
+impl From<Foo> for FooClass {
+    fn from(value: Foo) -> Self {
+        Self { sbar: value.sbar }
+    }
+}
+
 impl FooClass {
+    fn new() -> FooClass {
+        Foo { bar, sbar: 0 }
+    }
+
+    fn construct(class: &mut FooClass, bar: f64) -> FooInstance {
+        FooInstance { bar }
+    }
+
     fn static_fn(&mut self, num: i32) -> i32 {
-        self.sbar += num;
-        self.sbar
+        *self.sbar += num;
+        *self.sbar
     }
 
     // A neighboring method is generated for vm interaction
@@ -51,27 +77,17 @@ impl FooClass {
         let arg0 = method_data.extract::<i32>(vm, 1);
         method_data.returning(vm, Self::static_fn(self, arg0))
     }
-
-    fn new(&mut self, bar: f64) -> FooInstance {
-        Foo { bar }
-    }
 }
 
-impl Class for FooClass {
+impl V2Class for FooClass {
     type Instance = FooInstance;
 
     fn name(&self) -> &'static str {
         "Foo"
     }
 
-    fn initialize(vm: &VM, class: &mut Self) -> Self::Instance {
-        let arg_data = /*generated parameter code*/ ();
-        let arg0 = arg_data.extract::<f64>(vm, 1);
-        FooClass::new(class, arg0) // you can only have 1 constructor, which determines which function this will be.
-    }
-
     // If no method is marked #[construct], initialize is instead
-    fn initialize(_vm: &VM, _class: &mut Self) -> Self::Instance {
+    fn initialize(&mut self, _vm: &VM) -> Self::Instance {
         Foo::default()
     }
 }
@@ -90,15 +106,6 @@ impl WrenConvert for FooInstance {
     }
 }
 
-impl Registerable for FooInstance {
-    type Class = FooClass;
-}
-
-// in runtime
-pub fn register_foreign<T: Registerable>(ml: &mut ModuleLibrary) {
-    ml.register_foreign_class(T::Class::default())
-}
-
 // Class impl
 impl FooInstance {
     fn instance(&self, class: &mut FooClass) -> f64 {
@@ -114,6 +121,6 @@ impl FooInstance {
 
 mod foobar {
     fn publish_module(ml: &mut ModuleLibrary) {
-        register_foreign::<Foo>(ml)
+        ml.register_foreign_v2::<Foo>(ml)
     }
 }

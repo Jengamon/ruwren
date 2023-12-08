@@ -1,4 +1,6 @@
 //! We need to expose the Wren API in a Rust-y way
+use foreign_v2::ForeignItem;
+use std::any::{Any, TypeId};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
@@ -573,6 +575,7 @@ impl Printer for PrintlnPrinter {
 #[derive(Debug)]
 pub struct VM {
     pub vm: *mut WrenVM,
+    classes_v2: RefCell<HashMap<TypeId, Box<dyn Any>>>,
     error_recv: Receiver<WrenError>,
 }
 
@@ -843,6 +846,7 @@ impl VMConfig {
         // Have an uninitialized VM...
         let wvm = Rc::new(RefCell::new(VM {
             vm: std::ptr::null_mut(),
+            classes_v2: RefCell::new(HashMap::new()),
             error_recv: erx,
         }));
 
@@ -1205,6 +1209,29 @@ impl VM {
             } else {
                 None
             }
+        }
+    }
+
+    /// Accesses the Foreign V2 class for a given type, if it exists (initialize it if it doesn't)
+    pub fn use_class<T: ForeignItem + 'static, F, O>(&self, f: F) -> O
+    where
+        F: FnOnce(&VM, Option<&mut T::Class>) -> O,
+    {
+        use crate::foreign_v2::V2ClassAllocator;
+
+        let mut classes_v2 = self.classes_v2.borrow_mut();
+
+        if let Some(cls) = classes_v2.get_mut(&TypeId::of::<T>()) {
+            f(self, cls.downcast_mut())
+        } else {
+            // Throw away the inst, but initialize the class
+            let mut class = T::Class::allocate();
+
+            let ret = f(self, Some(&mut class));
+
+            classes_v2.insert(TypeId::of::<T>(), Box::new(class) as Box<T::Class>);
+
+            ret
         }
     }
 

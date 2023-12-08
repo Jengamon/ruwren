@@ -2,7 +2,7 @@ use darling::{ast::NestedMeta, FromAttributes, FromDeriveInput, FromField, FromM
 use quote::quote;
 use syn::{
     braced, parse::Parse, parse_macro_input, punctuated::Punctuated, DeriveInput, ImplItem,
-    ImplItemFn, ItemStruct, Token, Type, Visibility,
+    ImplItemFn, Token, Type, Visibility,
 };
 
 #[derive(FromField)]
@@ -46,8 +46,14 @@ pub fn wren_object_derive(stream: proc_macro::TokenStream) -> proc_macro::TokenS
 #[derive(Default, FromAttributes)]
 #[darling(default, attributes(wren_impl))]
 struct WrenImplFnAttrs {
+    // [0, 1] required (if 0, will attempt to use Default on Foo to generate FooClass)
+    allocator: bool,
+    // [0, 1] required (if 0, will attempt to use Default on Foo to generate FooInstance)
     constructor: bool,
-    static_fn: bool,
+
+    instance: bool,
+    getter: bool,
+    setter: bool,
 }
 
 struct WrenImplFn {
