@@ -1225,7 +1225,13 @@ impl VM {
         if let Some(cls) = classes_v2.get_mut(&TypeId::of::<T>()) {
             f(self, cls.downcast_mut())
         } else {
-            f(self, None)
+            use crate::foreign_v2::V2ClassAllocator;
+
+            // Initialize the class (should be done in case the type is *not* constructable)
+            let mut class = T::Class::allocate();
+            let ret = f(self, Some(&mut class));
+            classes_v2.insert(TypeId::of::<T>(), Box::new(class));
+            ret
         }
     }
 

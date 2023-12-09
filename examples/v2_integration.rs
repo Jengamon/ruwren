@@ -1,20 +1,20 @@
 use ruwren_macros::{wren_impl, wren_module, WrenObject};
 
 #[derive(WrenObject)]
-struct Foo {
-    bar: f64,
-    #[wren_field(static_member)]
-    sbar: i32,
-}
-
-#[derive(WrenObject)]
 struct Unit;
 
 #[derive(WrenObject)]
 struct NewType(u8);
 
 #[derive(WrenObject)]
-struct Tuple(u8, u8, #[wren_field(static_member)] u8, u8);
+struct Tuple(u8, u8, #[wren(static_member)] u8, u8);
+
+#[derive(WrenObject)]
+struct Foo {
+    bar: f64,
+    #[wren(static_member)]
+    sbar: i32,
+}
 
 #[wren_impl]
 impl Foo {

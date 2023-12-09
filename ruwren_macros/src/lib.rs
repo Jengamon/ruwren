@@ -292,7 +292,7 @@ fn generate_instance_type(wod: &WrenObjectDecl) -> proc_macro2::TokenStream {
 }
 */
 
-#[proc_macro_derive(WrenObject, attributes(wren_object, wren_field))]
+#[proc_macro_derive(WrenObject, attributes(wren))]
 pub fn wren_object_derive(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let mut input = parse_macro_input!(stream as DeriveInput);
 
