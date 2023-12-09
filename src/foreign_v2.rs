@@ -1,6 +1,6 @@
 mod convert;
 
-use std::any::{Any, TypeId};
+use std::any::{type_name, Any, TypeId};
 
 pub use convert::*;
 
@@ -11,22 +11,22 @@ pub trait Slottable<O> {
     fn scratch_size() -> usize
     where
         Self: Sized;
-    fn get(ctx: &mut Self::Context, vm: &VM, slot: SlotId, scratch_start: SlotId) -> O;
+    fn get(ctx: &mut Self::Context, vm: &VM, slot: SlotId, scratch_start: SlotId) -> Option<O>;
 
     fn get_unknown_context(
         ctx: &mut dyn Any, vm: &VM, slot: SlotId, scratch_start: SlotId,
-    ) -> Option<O>
+    ) -> Option<Option<O>>
     where
         Self::Context: 'static,
     {
         ctx.downcast_mut()
-            .and_then(|ctx| Some(Self::get(ctx, vm, slot, scratch_start)))
+            .map(|ctx| Self::get(ctx, vm, slot, scratch_start))
     }
 }
 
 impl<T> Slottable<T> for T
 where
-    T: WrenFrom,
+    T: WrenTryFrom,
 {
     type Context = ();
 
@@ -34,11 +34,11 @@ where
         T::SCRATCH_SPACE
     }
 
-    fn get(_ctx: &mut (), vm: &VM, slot: SlotId, scratch_start: SlotId) -> Self
+    fn get(_ctx: &mut (), vm: &VM, slot: SlotId, scratch_start: SlotId) -> Option<Self>
     where
         Self: Sized,
     {
-        T::from_vm(vm, slot, scratch_start)
+        T::try_from_vm(vm, slot, scratch_start)
     }
 }
 
@@ -92,6 +92,7 @@ where
     O: Slottable<O, Context = ()>,
 {
     O::get(&mut (), vm, slot.slot, scratch_offset + slot.scratch_start)
+        .expect(&format! {"slot {} cannot be type {}", slot.slot, type_name::<O>()})
 }
 
 pub fn get_slot_object<T>(
@@ -102,11 +103,12 @@ where
     T::Class: 'static,
     T: 'static,
 {
-    T::get_unknown_context(ctx, vm, slot.slot, scratch_offset + slot.scratch_start).or_else(|| {
-        vm.use_class::<T, _, _>(|vm, cls| {
-            cls.and_then(|class| Some(T::get(class, vm, slot.slot, slot.scratch_start)))
-        })
-    })
+    match T::get_unknown_context(ctx, vm, slot.slot, scratch_offset + slot.scratch_start) {
+        None => vm.use_class::<T, _, _>(|vm, cls| {
+            cls.and_then(|class| T::get(class, vm, slot.slot, slot.scratch_start))
+        }),
+        Some(obj) => obj,
+    }
 }
 
 pub trait V2Class {
@@ -123,25 +125,6 @@ pub trait ForeignItem {
 pub trait V2ClassAllocator: V2Class {
     fn allocate() -> Self;
 }
-
-// impl<T> Extractable<T::Class> for T
-// where
-//     T: ForeignItem + ClassObject,
-//     T: 'static,
-// {
-//     type Output = T::Source;
-//     const SCRATCH_SPACE: usize = 1;
-//     fn extract(
-//         context: &mut T::Class, vm: &VM, slot: SlotId, _scratch_start: SlotId,
-//     ) -> Self::Output {
-//         let inst = vm.get_slot_foreign::<T>(slot).expect(&format!(
-//             "Item in slot {} is not of type {}",
-//             slot,
-//             type_name::<T>()
-//         ));
-//         Into::<T::Source>::into((&*context, inst))
-//     }
-// }
 
 impl<T> Class for T
 where

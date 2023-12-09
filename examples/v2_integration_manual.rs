@@ -474,13 +474,9 @@ mod foobar {
         fn get(
             ctx: &mut Self::Context, vm: &ruwren::VM, slot: ruwren::SlotId,
             _scratch_start: ruwren::SlotId,
-        ) -> Foo {
-            let inst = vm.get_slot_foreign::<Self>(slot).expect(&format!(
-                "slot {} is not type {}",
-                slot,
-                type_name::<Self>()
-            ));
-            (&*ctx, inst).into()
+        ) -> Option<Foo> {
+            let inst = vm.get_slot_foreign::<Self>(slot)?;
+            Some((&*ctx, inst).into())
         }
     }
 

@@ -19,6 +19,20 @@ pub trait WrenTo {
     fn to_vm(self, vm: &VM, slot: SlotId, scratch_start: SlotId);
 }
 
+impl<D, E> WrenTo for Result<D, E>
+where
+    D: WrenTo,
+    E: WrenTo,
+{
+    const SCRATCH_SPACE: usize = D::SCRATCH_SPACE + E::SCRATCH_SPACE;
+    fn to_vm(self, vm: &VM, slot: SlotId, scratch_start: SlotId) {
+        match self {
+            Ok(d) => D::to_vm(d, vm, slot, scratch_start),
+            Err(e) => E::to_vm(e, vm, slot, scratch_start + D::SCRATCH_SPACE),
+        }
+    }
+}
+
 pub trait Extractable<C> {
     type Output;
     const SCRATCH_SPACE: usize = 0;
@@ -61,6 +75,16 @@ impl<T: WrenAtom> WrenTryFrom for T {
     }
 }
 
+impl<T: WrenAtom> WrenTryFrom for Option<T> {
+    const SCRATCH_SPACE: usize = <T as WrenAtom>::SCRATCH_SPACE;
+    fn try_from_vm(vm: &VM, slot: SlotId, scratch_start: SlotId) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        Some(T::from_vm(vm, slot, scratch_start))
+    }
+}
+
 impl<T: WrenTryFrom, C> Extractable<C> for Option<T> {
     type Output = Option<T>;
     const SCRATCH_SPACE: usize = <T as WrenTryFrom>::SCRATCH_SPACE;
@@ -77,13 +101,6 @@ impl<T: WrenTryFrom> WrenFrom for T {
             slot,
             type_name::<T>()
         ))
-    }
-}
-
-impl<T: WrenTryFrom> WrenFrom for Option<T> {
-    const SCRATCH_SPACE: usize = <T as WrenTryFrom>::SCRATCH_SPACE;
-    fn from_vm(vm: &VM, slot: SlotId, scratch_start: SlotId) -> Self {
-        T::try_from_vm(vm, slot, scratch_start)
     }
 }
 
