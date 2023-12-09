@@ -1,37 +1,15 @@
-use darling::{ast::NestedMeta, FromAttributes, FromDeriveInput, FromField, FromMeta};
 use proc_macro2::Span;
 use quote::{quote, quote_spanned};
 use syn::{
-    braced, parse::Parse, parse_macro_input, punctuated::Punctuated, spanned::Spanned, DeriveInput,
-    ImplItem, ImplItemFn, Index, Token, Type, Visibility,
+    braced, parse::Parse, parse_macro_input, punctuated::Punctuated, spanned::Spanned, Data,
+    DeriveInput, ImplItem, ImplItemFn, Index, Token, Type, Visibility,
 };
-
-#[derive(FromField, Clone)]
-#[darling(attributes(wren_field), forward_attrs(allow, doc, cfg))]
-struct WrenObjectField {
-    ident: Option<syn::Ident>,
-    vis: Visibility,
-    ty: Type,
-    #[darling(default)]
-    static_member: bool,
-}
-
-#[derive(FromDeriveInput)]
-#[darling(
-    supports(struct_any),
-    attributes(wren_object),
-    forward_attrs(allow, doc, cfg)
-)]
-struct WrenObjectDecl {
-    ident: syn::Ident,
-    vis: Visibility,
-    data: darling::ast::Data<(), WrenObjectField>,
-}
 
 fn generate_wrapper_type_name(name: &syn::Ident) -> syn::Ident {
     syn::Ident::new(&format!("{name}Wrapper"), Span::call_site())
 }
 
+/*
 fn generate_wrapper_type(wod: &WrenObjectDecl) -> proc_macro2::TokenStream {
     let source = &wod.ident;
     let wrapper_name = generate_wrapper_type_name(&wod.ident);
@@ -312,33 +290,36 @@ fn generate_instance_type(wod: &WrenObjectDecl) -> proc_macro2::TokenStream {
         }
     }
 }
+*/
 
 #[proc_macro_derive(WrenObject, attributes(wren_object, wren_field))]
 pub fn wren_object_derive(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let input = parse_macro_input!(stream as DeriveInput);
+    let mut input = parse_macro_input!(stream as DeriveInput);
 
-    let wren_object_data = match WrenObjectDecl::from_derive_input(&input) {
-        Ok(wod) => wod,
-        Err(e) => {
-            return proc_macro::TokenStream::from(e.write_errors());
+    let struct_impl = match input.data {
+        Data::Struct(s) => s,
+        _ => {
+            return quote! {
+                compile_error!("only structs are supported")
+            }
+            .into()
         }
     };
 
-    let wrapper_type = generate_wrapper_type(&wren_object_data);
-    let class_type = generate_class_type(&wren_object_data);
-    let instance_type = generate_instance_type(&wren_object_data);
+    // let wrapper_type = generate_wrapper_type(&wren_object_data);
+    // let class_type = generate_class_type(&wren_object_data);
+    // let instance_type = generate_instance_type(&wren_object_data);
 
     let expanded = quote! {
-        #wrapper_type
-        #class_type
-        #instance_type
+        // #wrapper_type
+        // #class_type
+        // #instance_type
     };
 
     proc_macro::TokenStream::from(expanded)
 }
 
-#[derive(Default, FromAttributes)]
-#[darling(default, attributes(wren_impl))]
+#[derive(Default)]
 struct WrenImplFnAttrs {
     // [0, 1] required (if 0, will attempt to use Default on Foo to generate FooClass)
     allocator: bool,
@@ -348,6 +329,8 @@ struct WrenImplFnAttrs {
     instance: bool,
     getter: bool,
     setter: bool,
+
+    object: Vec<syn::Ident>,
 }
 
 struct WrenImplFn {
@@ -360,8 +343,12 @@ impl Parse for WrenImplFn {
         let item: ImplItem = input.parse()?;
         match item {
             ImplItem::Fn(func) => {
-                let attrs = WrenImplFnAttrs::from_attributes(&func.attrs)?;
-                Ok(Self { func, attrs })
+                // let attrs = WrenImplFnAttrs::from_attributes(&func.attrs)?;
+                Ok(Self {
+                    func,
+                    attrs: Default::default(),
+                })
+                // todo!()
             }
             _ => unimplemented!(),
         }

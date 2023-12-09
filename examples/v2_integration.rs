@@ -38,6 +38,7 @@ impl Foo {
     }
 
     // This is only given a FooClass
+    #[wren_impl(object(foo))]
     fn static_fn(&mut self, num: i32, foo: Option<Foo>) -> i32 {
         self.sbar += num;
         self.sbar
