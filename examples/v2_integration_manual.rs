@@ -20,6 +20,12 @@ impl<'a> From<(&'a FooClass, &'a FooInstance)> for Foo {
     }
 }
 
+impl From<Option<Foo>> for Foo {
+    fn from(value: Option<Foo>) -> Self {
+        value.expect(&format!("Failed to get value of type {}", FooClass::name()))
+    }
+}
+
 // Derive macro
 struct FooWrapper<'a> {
     _marker: std::marker::PhantomData<&'a ()>,
@@ -128,7 +134,7 @@ impl FooClass {
 
         let arg0 = get_slot_value(vm, &arg0_calc, 2);
         let arg1 = get_slot_object::<FooInstance>(vm, &arg1_calc, 2, class);
-        let ret = FooClass::static_fn(class, arg0, arg1);
+        let ret = FooClass::static_fn(class, arg0, arg1.into());
         WrenTo::to_vm(ret, vm, 0, 1)
     }
 
@@ -439,8 +445,6 @@ impl ClassObject for FooInstance {
 }
 
 mod foobar {
-    use std::any::type_name;
-
     use ruwren::foreign_v2::{Slottable, V2Class, WrenTo};
 
     fn module_name() -> String {
