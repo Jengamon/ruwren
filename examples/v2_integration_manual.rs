@@ -122,12 +122,12 @@ impl FooClass {
     }
 
     fn vm_static_fn(class: &mut FooClass, vm: &VM) {
-        let arg0_calc = InputSlot::new::<_, i32>(1, 1);
-        let arg1_calc = InputSlot::object_next(1, &arg0_calc);
+        let arg0_calc = InputSlot::new::<_, i32>(1, 2);
+        let arg1_calc = InputSlot::object_next(2, &arg0_calc);
         vm.ensure_slots(arg1_calc.scratch_end());
 
-        let arg0 = get_slot_value(vm, &arg0_calc);
-        let arg1 = get_slot_object::<FooInstance>(vm, &arg1_calc, class);
+        let arg0 = get_slot_value(vm, &arg0_calc, 2);
+        let arg1 = get_slot_object::<FooInstance>(vm, &arg1_calc, 2, class);
         let ret = FooClass::static_fn(class, arg0, arg1);
         WrenTo::to_vm(ret, vm, 0, 1)
     }
@@ -187,7 +187,7 @@ impl<'a> FooWrapper<'a> {
         let arg0_calc = InputSlot::new::<_, Option<f64>>(1, 1);
         vm.ensure_slots(arg0_calc.scratch_end());
 
-        let arg0 = get_slot_value(vm, &arg0_calc);
+        let arg0 = get_slot_value(vm, &arg0_calc, 1);
         let ret = self.bar(arg0);
         WrenTo::to_vm(ret, vm, 0, 1)
     }
@@ -319,7 +319,7 @@ impl ForeignItem for FooInstance {
         let arg0_calc = InputSlot::new::<_, f64>(1, 1);
         // let arg1_calc = InputSlot::object_next(1, &arg0_calc);
         vm.ensure_slots(arg0_calc.scratch_end());
-        let arg0 = get_slot_value(vm, &arg0_calc);
+        let arg0 = get_slot_value(vm, &arg0_calc, 1);
         // let arg1 = get_slot_object::<Self>(vm, &arg1_calc, class);
         FooClass::construct(class, arg0)
     }

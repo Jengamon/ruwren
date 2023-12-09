@@ -90,20 +90,22 @@ impl InputSlot {
     }
 }
 
-pub fn get_slot_value<O>(vm: &VM, slot: &InputSlot) -> O
+pub fn get_slot_value<O>(vm: &VM, slot: &InputSlot, scratch_offset: usize) -> O
 where
     O: Slottable<O, Context = ()>,
 {
-    O::get(&mut (), vm, slot.slot, slot.scratch_start)
+    O::get(&mut (), vm, slot.slot, scratch_offset + slot.scratch_start)
 }
 
-pub fn get_slot_object<T>(vm: &VM, slot: &InputSlot, ctx: &mut dyn Any) -> Option<T::Source>
+pub fn get_slot_object<T>(
+    vm: &VM, slot: &InputSlot, scratch_offset: usize, ctx: &mut dyn Any,
+) -> Option<T::Source>
 where
     T: ForeignItem + Slottable<T::Source, Context = T::Class>,
     T::Class: 'static,
     T: 'static,
 {
-    T::get_unknown_context(ctx, vm, slot.slot, slot.scratch_start).or_else(|| {
+    T::get_unknown_context(ctx, vm, slot.slot, scratch_offset + slot.scratch_start).or_else(|| {
         vm.use_class::<T, _, _>(|vm, cls| {
             cls.and_then(|class| Some(T::get(class, vm, slot.slot, slot.scratch_start)))
         })

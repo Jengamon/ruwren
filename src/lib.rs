@@ -1193,6 +1193,9 @@ impl VM {
 
     pub fn get_slot_foreign_mut<T: 'static + ClassObject>(&self, slot: SlotId) -> Option<&mut T> {
         self.ensure_slots(slot + 1);
+        if self.get_slot_type(slot) != SlotType::Foreign {
+            return None;
+        }
         unsafe {
             let ptr = wren_sys::wrenGetSlotForeign(self.vm, slot as raw::c_int);
             if !ptr.is_null() {
