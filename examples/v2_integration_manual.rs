@@ -1,36 +1,38 @@
 use ruwren::{
-    foreign_v2::{ForeignItem, InputSlot, V2Class, V2ClassAllocator, WrenTo},
+    foreign_v2::{
+        get_slot_object, get_slot_value, ForeignItem, InputSlot, V2Class, V2ClassAllocator, WrenTo,
+    },
     ClassObject, ModuleLibrary, VMConfig, VM,
 };
 
+#[derive(Debug)]
 struct Foo {
     bar: f64,
     sbar: i32,
 }
 
+impl<'a> From<(&'a FooClass, &'a FooInstance)> for Foo {
+    fn from((class, instance): (&'a FooClass, &'a FooInstance)) -> Self {
+        Foo {
+            bar: instance.bar.clone(),
+            sbar: class.sbar.clone(),
+        }
+    }
+}
+
 // Derive macro
 struct FooWrapper<'a> {
     _marker: std::marker::PhantomData<&'a ()>,
+    class: &'a mut FooClass,
     bar: &'a mut f64,
-    sbar: &'a mut i32,
 }
 
 impl<'a> From<(&'a mut FooClass, &'a mut FooInstance)> for FooWrapper<'a> {
     fn from((class, instance): (&'a mut FooClass, &'a mut FooInstance)) -> Self {
         Self {
             _marker: std::marker::PhantomData,
+            class,
             bar: &mut instance.bar,
-            sbar: &mut class.sbar,
-        }
-    }
-}
-
-impl<'a> From<&'a mut Foo> for FooWrapper<'a> {
-    fn from(value: &'a mut Foo) -> Self {
-        Self {
-            _marker: std::marker::PhantomData,
-            bar: &mut value.bar,
-            sbar: &mut value.sbar,
         }
     }
 }
@@ -71,7 +73,7 @@ impl FooClass {
 
     fn vm_sbar(class: &mut FooClass, vm: &VM) {
         let ret = FooClass::sbar(class);
-        WrenTo::to_vm(ret, vm, 0)
+        WrenTo::to_vm(ret, vm, 0, 1)
     }
 
     unsafe extern "C" fn native_vm_sbar(vm: *mut ruwren::wren_sys::WrenVM) {
@@ -113,15 +115,21 @@ impl FooClass {
         );
     }
 
-    fn static_fn(class: &mut FooClass, num: i32) -> i32 {
+    fn static_fn(class: &mut FooClass, num: i32, ifoo: Option<Foo>) -> i32 {
+        eprintln!("{:?}", ifoo);
         class.sbar += num;
         class.sbar + 5
     }
 
     fn vm_static_fn(class: &mut FooClass, vm: &VM) {
-        let arg0_calc = InputSlot::first();
-        let ret = FooClass::static_fn(class, arg0_calc.value(vm));
-        WrenTo::to_vm(ret, vm, 0)
+        let arg0_calc = InputSlot::new::<_, i32>(1, 1);
+        let arg1_calc = InputSlot::object_next(1, &arg0_calc);
+        vm.ensure_slots(arg1_calc.scratch_end());
+
+        let arg0 = get_slot_value(vm, &arg0_calc);
+        let arg1 = get_slot_object::<FooInstance>(vm, &arg1_calc, class);
+        let ret = FooClass::static_fn(class, arg0, arg1);
+        WrenTo::to_vm(ret, vm, 0, 1)
     }
 
     unsafe extern "C" fn native_vm_static_fn(vm: *mut ruwren::wren_sys::WrenVM) {
@@ -176,9 +184,12 @@ impl<'a> FooWrapper<'a> {
     }
 
     fn vm_bar(&mut self, vm: &VM) {
-        let arg0_calc = InputSlot::first();
-        let ret = self.bar(arg0_calc.value(vm));
-        WrenTo::to_vm(ret, vm, 0)
+        let arg0_calc = InputSlot::new::<_, Option<f64>>(1, 1);
+        vm.ensure_slots(arg0_calc.scratch_end());
+
+        let arg0 = get_slot_value(vm, &arg0_calc);
+        let ret = self.bar(arg0);
+        WrenTo::to_vm(ret, vm, 0, 1)
     }
 
     unsafe extern "C" fn native_vm_bar(vm: *mut wren_sys::WrenVM) {
@@ -230,13 +241,13 @@ impl<'a> FooWrapper<'a> {
     }
 
     fn instance(&self) -> f64 {
-        dbg!(&self.sbar);
+        dbg!(&self.class.sbar);
         *self.bar
     }
 
     fn vm_instance(&self, vm: &VM) {
         let ret = self.instance();
-        WrenTo::to_vm(ret, vm, 0)
+        WrenTo::to_vm(ret, vm, 0, 1)
     }
 
     unsafe extern "C" fn native_vm_instance(vm: *mut wren_sys::WrenVM) {
@@ -302,10 +313,15 @@ impl V2ClassAllocator for FooClass {
 
 impl ForeignItem for FooInstance {
     type Class = FooClass;
+    type Source = Foo;
 
     fn construct(class: &mut Self::Class, vm: &ruwren::VM) -> Self {
-        let arg0_calc = InputSlot::first();
-        FooClass::construct(class, arg0_calc.value(vm))
+        let arg0_calc = InputSlot::new::<_, f64>(1, 1);
+        // let arg1_calc = InputSlot::object_next(1, &arg0_calc);
+        vm.ensure_slots(arg0_calc.scratch_end());
+        let arg0 = get_slot_value(vm, &arg0_calc);
+        // let arg1 = get_slot_object::<Self>(vm, &arg1_calc, class);
+        FooClass::construct(class, arg0)
     }
 }
 
@@ -399,7 +415,7 @@ impl ClassObject for FooInstance {
             function_pointers: vec![
                 ruwren::MethodPointer {
                     is_static: true,
-                    signature: ruwren::FunctionSignature::new_function("static_fn", 1),
+                    signature: ruwren::FunctionSignature::new_function("static_fn", 2),
                     pointer: FooClass::native_vm_static_fn,
                 },
                 ruwren::MethodPointer {
@@ -423,14 +439,55 @@ impl ClassObject for FooInstance {
 }
 
 mod foobar {
-    use ruwren::foreign_v2::V2Class;
+    use std::any::type_name;
 
-    use super::{FooClass, FooInstance};
+    use ruwren::foreign_v2::{Extractable, Slottable, V2Class, WrenAtom, WrenTo};
+
+    fn module_name() -> String {
+        stringify!(foobar).replace("_", "/")
+    }
+
+    use super::{Foo, FooClass, FooInstance};
+
+    impl WrenTo for Foo {
+        fn to_vm(self, vm: &ruwren::VM, slot: ruwren::SlotId, scratch_start: ruwren::SlotId) {
+            vm.set_slot_new_foreign_scratch::<_, _, FooInstance>(
+                module_name(),
+                FooClass::name(),
+                self.into(),
+                slot,
+                scratch_start,
+            )
+            .unwrap();
+        }
+    }
+
+    impl Slottable<Foo> for FooInstance {
+        type Context = FooClass;
+        fn scratch_size() -> usize
+        where
+            Self: Sized,
+        {
+            1
+        }
+
+        fn get(
+            ctx: &mut Self::Context, vm: &ruwren::VM, slot: ruwren::SlotId,
+            _scratch_start: ruwren::SlotId,
+        ) -> Foo {
+            let inst = vm.get_slot_foreign::<Self>(slot).expect(&format!(
+                "slot {} is not type {}",
+                slot,
+                type_name::<Self>()
+            ));
+            (&*ctx, inst).into()
+        }
+    }
 
     pub fn publish_module(lib: &mut ruwren::ModuleLibrary) {
         let mut module = ruwren::Module::new();
         module.class::<FooInstance, _>(FooClass::name());
-        lib.module(stringify!(foobar).replace("_", "/"), module);
+        lib.module(module_name(), module);
     }
 }
 

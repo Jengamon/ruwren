@@ -1217,21 +1217,12 @@ impl VM {
     where
         F: FnOnce(&VM, Option<&mut T::Class>) -> O,
     {
-        use crate::foreign_v2::V2ClassAllocator;
-
         let mut classes_v2 = self.classes_v2.borrow_mut();
 
         if let Some(cls) = classes_v2.get_mut(&TypeId::of::<T>()) {
             f(self, cls.downcast_mut())
         } else {
-            // Throw away the inst, but initialize the class
-            let mut class = T::Class::allocate();
-
-            let ret = f(self, Some(&mut class));
-
-            classes_v2.insert(TypeId::of::<T>(), Box::new(class) as Box<T::Class>);
-
-            ret
+            f(self, None)
         }
     }
 

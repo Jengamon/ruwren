@@ -25,21 +25,28 @@ impl Foo {
         Foo { bar, sbar: 0 }
     }
 
+    // Basically, self changes statically
+    // constructor -> FooClass
+    // any method not marked "instance" -> FooClass
+    // any method marked "instance" -> FooWrapper
+    // getter means that other than self, method cannot accept any arguments
+    // setter means that other than self, method accept 1 argument, and return must be ()
+
     #[wren_impl(constructor)]
-    fn construct(class: &mut FooClass, bar: f64) -> FooInstance {
+    fn construct(&mut self, bar: f64) -> FooInstance {
         FooInstance { bar }
     }
 
     // This is only given a FooClass
-    fn static_fn(class: &mut FooClass, num: i32) -> i32 {
-        class.sbar += num;
-        class.sbar
+    fn static_fn(&mut self, num: i32, foo: Option<Foo>) -> i32 {
+        self.sbar += num;
+        self.sbar
     }
 
     // a static getter
     #[wren_impl(getter)]
-    fn sbar(class: &mut FooClass) -> i32 {
-        class.sbar
+    fn sbar(&mut self) -> i32 {
+        self.sbar
     }
 
     // an instance getter

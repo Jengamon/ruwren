@@ -3,8 +3,9 @@ use std::{any::type_name, collections::HashMap, string::FromUtf8Error};
 use crate::{SlotId, SlotType, VM};
 
 pub trait WrenAtom {
-    fn to_vm(self, vm: &VM, slot: SlotId);
-    fn from_vm(vm: &VM, slot: SlotId) -> Option<Self>
+    const SCRATCH_SPACE: usize = 0;
+    fn to_vm(self, vm: &VM, slot: SlotId, scratch_start: SlotId);
+    fn from_vm(vm: &VM, slot: SlotId, scratch_start: SlotId) -> Option<Self>
     where
         Self: Sized;
 }
@@ -15,7 +16,13 @@ pub trait WrenTo {
     /// For example, if ScratchSpace == 1, then conversion functions
     /// can use `slot` and `slot + 1` in its implementation
     const SCRATCH_SPACE: usize = 0;
-    fn to_vm(self, vm: &VM, slot: SlotId);
+    fn to_vm(self, vm: &VM, slot: SlotId, scratch_start: SlotId);
+}
+
+pub trait Extractable<C> {
+    type Output;
+    const SCRATCH_SPACE: usize = 0;
+    fn extract(context: &mut C, vm: &VM, slot: SlotId, scratch_start: SlotId) -> Self::Output;
 }
 
 pub trait WrenFrom: Sized {
@@ -25,7 +32,7 @@ pub trait WrenFrom: Sized {
     /// can use `slot` and `slot + 1` in its implementation
     const SCRATCH_SPACE: usize = 0;
     /// Note: This should be *infallible*, so it's rare to have this directly implemented
-    fn from_vm(vm: &VM, slot: SlotId) -> Self;
+    fn from_vm(vm: &VM, slot: SlotId, scratch_start: SlotId) -> Self;
 }
 
 pub trait WrenTryFrom: Sized {
@@ -34,27 +41,38 @@ pub trait WrenTryFrom: Sized {
     /// For example, if ScratchSpace == 1, then conversion functions
     /// can use `slot` and `slot + 1` in its implementation
     const SCRATCH_SPACE: usize = 0;
-    fn try_from_vm(vm: &VM, slot: SlotId) -> Option<Self>;
+    fn try_from_vm(vm: &VM, slot: SlotId, scratch_start: SlotId) -> Option<Self>;
 }
 
 impl<T: WrenAtom> WrenTo for T {
-    fn to_vm(self, vm: &VM, slot: SlotId) {
-        <Self as WrenAtom>::to_vm(self, vm, slot)
+    const SCRATCH_SPACE: usize = <T as WrenAtom>::SCRATCH_SPACE;
+    fn to_vm(self, vm: &VM, slot: SlotId, scratch_start: SlotId) {
+        <Self as WrenAtom>::to_vm(self, vm, slot, scratch_start)
     }
 }
 
 impl<T: WrenAtom> WrenTryFrom for T {
-    fn try_from_vm(vm: &VM, slot: SlotId) -> Option<Self>
+    const SCRATCH_SPACE: usize = <T as WrenAtom>::SCRATCH_SPACE;
+    fn try_from_vm(vm: &VM, slot: SlotId, scratch_start: SlotId) -> Option<Self>
     where
         Self: Sized,
     {
-        <Self as WrenAtom>::from_vm(vm, slot)
+        <Self as WrenAtom>::from_vm(vm, slot, scratch_start)
+    }
+}
+
+impl<T: WrenTryFrom, C> Extractable<C> for Option<T> {
+    type Output = Option<T>;
+    const SCRATCH_SPACE: usize = <T as WrenTryFrom>::SCRATCH_SPACE;
+    fn extract(_context: &mut C, vm: &VM, slot: SlotId, scratch_start: SlotId) -> Self::Output {
+        T::try_from_vm(vm, slot, scratch_start)
     }
 }
 
 impl<T: WrenTryFrom> WrenFrom for T {
-    fn from_vm(vm: &VM, slot: SlotId) -> Self {
-        T::try_from_vm(vm, slot).expect(&format!(
+    const SCRATCH_SPACE: usize = <T as WrenTryFrom>::SCRATCH_SPACE;
+    fn from_vm(vm: &VM, slot: SlotId, scratch_start: SlotId) -> Self {
+        T::try_from_vm(vm, slot, scratch_start).expect(&format!(
             "expected slot {} to be type {}",
             slot,
             type_name::<T>()
@@ -63,8 +81,9 @@ impl<T: WrenTryFrom> WrenFrom for T {
 }
 
 impl<T: WrenTryFrom> WrenFrom for Option<T> {
-    fn from_vm(vm: &VM, slot: SlotId) -> Self {
-        T::try_from_vm(vm, slot)
+    const SCRATCH_SPACE: usize = <T as WrenTryFrom>::SCRATCH_SPACE;
+    fn from_vm(vm: &VM, slot: SlotId, scratch_start: SlotId) -> Self {
+        T::try_from_vm(vm, slot, scratch_start)
     }
 }
 
@@ -72,11 +91,11 @@ macro_rules! wren_convert {
     (numeric $($ty:ty),+) => {
             $(
                 impl WrenAtom for $ty {
-                    fn to_vm(self, vm: &VM, slot: SlotId) {
+                    fn to_vm(self, vm: &VM, slot: SlotId, _scratch_start: SlotId) {
                         vm.set_slot_double(slot, self as f64)
                     }
 
-                    fn from_vm(vm: &VM, slot: SlotId) -> Option<Self> {
+                    fn from_vm(vm: &VM, slot: SlotId, _scratch_start: SlotId) -> Option<Self> {
                         vm.get_slot_double(slot).map(|i| i as $ty)
                     }
                 }
@@ -86,11 +105,11 @@ macro_rules! wren_convert {
 }
 
 impl WrenAtom for () {
-    fn to_vm(self, vm: &VM, slot: SlotId) {
+    fn to_vm(self, vm: &VM, slot: SlotId, _scratch_start: SlotId) {
         vm.set_slot_null(slot)
     }
 
-    fn from_vm(_vm: &VM, _slot: SlotId) -> Option<Self>
+    fn from_vm(_vm: &VM, _slot: SlotId, _scratch_start: SlotId) -> Option<Self>
     where
         Self: Sized,
     {
@@ -99,11 +118,11 @@ impl WrenAtom for () {
 }
 
 impl WrenAtom for bool {
-    fn to_vm(self, vm: &VM, slot: SlotId) {
+    fn to_vm(self, vm: &VM, slot: SlotId, _scratch_start: SlotId) {
         vm.set_slot_bool(slot, self)
     }
 
-    fn from_vm(vm: &VM, slot: SlotId) -> Option<Self>
+    fn from_vm(vm: &VM, slot: SlotId, _scratch_start: SlotId) -> Option<Self>
     where
         Self: Sized,
     {
@@ -114,7 +133,7 @@ impl WrenAtom for bool {
 // Wren strings aren't guranteed to be UTF-8, so to get a string,
 // accept a WrenBytes, then call its `into_string`
 impl WrenTo for String {
-    fn to_vm(self, vm: &VM, slot: SlotId) {
+    fn to_vm(self, vm: &VM, slot: SlotId, _scratch_start: SlotId) {
         vm.set_slot_string(slot, self)
     }
 }
@@ -138,11 +157,11 @@ impl WrenBytes {
 }
 
 impl WrenAtom for WrenBytes {
-    fn to_vm(self, vm: &VM, slot: SlotId) {
+    fn to_vm(self, vm: &VM, slot: SlotId, _scratch_start: SlotId) {
         vm.set_slot_bytes(slot, &self.0)
     }
 
-    fn from_vm(vm: &VM, slot: SlotId) -> Option<Self>
+    fn from_vm(vm: &VM, slot: SlotId, _scratch_start: SlotId) -> Option<Self>
     where
         Self: Sized,
     {
@@ -158,7 +177,7 @@ pub enum WrenValue {
 }
 
 impl WrenAtom for WrenValue {
-    fn to_vm(self, vm: &VM, slot: SlotId) {
+    fn to_vm(self, vm: &VM, slot: SlotId, _scratch_start: SlotId) {
         match self {
             Self::Number(val) => vm.set_slot_double(slot, val),
             Self::String(string) => vm.set_slot_bytes(slot, &string),
@@ -167,7 +186,7 @@ impl WrenAtom for WrenValue {
         }
     }
 
-    fn from_vm(vm: &VM, slot: SlotId) -> Option<Self>
+    fn from_vm(vm: &VM, slot: SlotId, _scratch_start: SlotId) -> Option<Self>
     where
         Self: Sized,
     {
@@ -187,11 +206,11 @@ where
 {
     const SCRATCH_SPACE: usize = 1;
 
-    fn to_vm(self, vm: &VM, slot: SlotId) {
+    fn to_vm(self, vm: &VM, slot: SlotId, scratch_start: SlotId) {
         vm.set_slot_new_list(slot);
         for (idx, i) in self.into_iter().enumerate() {
-            i.to_vm(vm, slot + 1);
-            vm.set_list_element(slot, idx as i32, slot + 1);
+            i.to_vm(vm, scratch_start, scratch_start + 1);
+            vm.set_list_element(slot, idx as i32, scratch_start);
         }
     }
 }
@@ -202,7 +221,7 @@ where
 {
     const SCRATCH_SPACE: usize = 1;
 
-    fn try_from_vm(vm: &VM, slot: SlotId) -> Option<Self>
+    fn try_from_vm(vm: &VM, slot: SlotId, scratch_start: SlotId) -> Option<Self>
     where
         Self: Sized,
     {
@@ -217,8 +236,8 @@ where
 
         let mut items: [Option<T>; N] = std::array::from_fn(|_| None);
         for (i, item) in items.iter_mut().enumerate() {
-            vm.get_list_element(slot, i as i32, slot + 1);
-            *item = T::from_vm(vm, slot + 1);
+            vm.get_list_element(slot, i as i32, scratch_start);
+            *item = T::from_vm(vm, scratch_start, scratch_start + 1);
         }
         convert(items)
     }
@@ -230,11 +249,11 @@ where
 {
     const SCRATCH_SPACE: usize = 1;
 
-    fn to_vm(self, vm: &VM, slot: SlotId) {
+    fn to_vm(self, vm: &VM, slot: SlotId, scratch_start: SlotId) {
         vm.set_slot_new_list(slot);
         for (idx, i) in self.into_iter().enumerate() {
-            i.to_vm(vm, slot + 1);
-            vm.set_list_element(slot, idx as i32, slot + 1);
+            i.to_vm(vm, scratch_start, scratch_start + 1);
+            vm.set_list_element(slot, idx as i32, scratch_start);
         }
     }
 }
@@ -245,15 +264,15 @@ where
 {
     const SCRATCH_SPACE: usize = 1;
 
-    fn try_from_vm(vm: &VM, slot: SlotId) -> Option<Self>
+    fn try_from_vm(vm: &VM, slot: SlotId, scratch_start: SlotId) -> Option<Self>
     where
         Self: Sized,
     {
         let mut items = vec![];
         let count = vm.get_list_count(slot)?;
         for i in 0..count {
-            vm.get_list_element(slot, i as i32, slot + 1);
-            items.push(T::from_vm(vm, slot + 1));
+            vm.get_list_element(slot, i as i32, scratch_start);
+            items.push(T::from_vm(vm, scratch_start, scratch_start + 1));
         }
         items.into_iter().collect()
     }
@@ -266,12 +285,12 @@ where
 {
     const SCRATCH_SPACE: usize = 2;
 
-    fn to_vm(self, vm: &VM, slot: SlotId) {
+    fn to_vm(self, vm: &VM, slot: SlotId, scratch_start: SlotId) {
         vm.set_slot_new_map(slot);
         for (k, v) in self.into_iter() {
-            k.to_vm(vm, slot + 1);
-            v.to_vm(vm, slot + 2);
-            vm.set_map_value(slot, slot + 1, slot + 2);
+            k.to_vm(vm, scratch_start, scratch_start + 2);
+            v.to_vm(vm, scratch_start + 1, scratch_start + 2);
+            vm.set_map_value(slot, scratch_start, scratch_start + 1);
         }
     }
 }

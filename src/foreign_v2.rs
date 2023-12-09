@@ -1,45 +1,113 @@
 mod convert;
 
-use std::{any::TypeId, marker::PhantomData};
+use std::{
+    any::{type_name, Any, TypeId},
+    marker::PhantomData,
+};
 
 pub use convert::*;
 
 use crate::{Class, SlotId, VM};
 
-pub struct InputSlot<T> {
-    marker: PhantomData<T>,
-    offset: SlotId,
+pub trait Slottable<O> {
+    type Context;
+    fn scratch_size() -> usize
+    where
+        Self: Sized;
+    fn get(ctx: &mut Self::Context, vm: &VM, slot: SlotId, scratch_start: SlotId) -> O;
+
+    fn get_unknown_context(
+        ctx: &mut dyn Any, vm: &VM, slot: SlotId, scratch_start: SlotId,
+    ) -> Option<O>
+    where
+        Self::Context: 'static,
+    {
+        ctx.downcast_mut()
+            .and_then(|ctx| Some(Self::get(ctx, vm, slot, scratch_start)))
+    }
 }
 
-impl<T> InputSlot<T>
+impl<T> Slottable<T> for T
 where
     T: WrenFrom,
 {
-    pub fn first() -> Self {
+    type Context = ();
+
+    fn scratch_size() -> usize {
+        T::SCRATCH_SPACE
+    }
+
+    fn get(_ctx: &mut (), vm: &VM, slot: SlotId, scratch_start: SlotId) -> Self
+    where
+        Self: Sized,
+    {
+        T::from_vm(vm, slot, scratch_start)
+    }
+}
+
+#[derive(Debug)]
+pub struct InputSlot {
+    slot: SlotId,
+    scratch_start: usize,
+    scratch_size: usize,
+}
+
+impl InputSlot {
+    pub fn new<O, T: Slottable<O>>(slot: SlotId, arity: usize) -> Self {
         InputSlot {
-            marker: PhantomData,
-            offset: 1,
+            slot,
+            scratch_start: arity + 1,
+            scratch_size: T::scratch_size(),
         }
     }
 
-    pub fn next<O: WrenFrom>(prev: &InputSlot<O>) -> Self {
+    pub fn next<O, T: Slottable<O>>(slot: SlotId, prev: &InputSlot) -> Self {
         InputSlot {
-            marker: PhantomData,
-            offset: prev.slot_end(),
+            slot,
+            scratch_start: prev.scratch_start + prev.scratch_size,
+            scratch_size: T::scratch_size(),
         }
     }
 
-    pub fn slot(&self) -> SlotId {
-        self.offset
+    pub fn object_new(slot: SlotId, arity: usize) -> Self {
+        InputSlot {
+            slot,
+            scratch_start: arity + 1,
+            scratch_size: 1,
+        }
     }
 
-    pub fn slot_end(&self) -> SlotId {
-        self.offset + 1 + T::SCRATCH_SPACE
+    pub fn object_next(slot: SlotId, prev: &InputSlot) -> Self {
+        InputSlot {
+            slot,
+            scratch_start: prev.scratch_start + prev.scratch_size,
+            scratch_size: 1,
+        }
     }
 
-    pub fn value(&self, vm: &VM) -> T {
-        T::from_vm(vm, self.slot())
+    pub fn scratch_end(&self) -> usize {
+        self.scratch_start + self.scratch_size
     }
+}
+
+pub fn get_slot_value<O>(vm: &VM, slot: &InputSlot) -> O
+where
+    O: Slottable<O, Context = ()>,
+{
+    O::get(&mut (), vm, slot.slot, slot.scratch_start)
+}
+
+pub fn get_slot_object<T>(vm: &VM, slot: &InputSlot, ctx: &mut dyn Any) -> Option<T::Source>
+where
+    T: ForeignItem + Slottable<T::Source, Context = T::Class>,
+    T::Class: 'static,
+    T: 'static,
+{
+    T::get_unknown_context(ctx, vm, slot.slot, slot.scratch_start).or_else(|| {
+        vm.use_class::<T, _, _>(|vm, cls| {
+            cls.and_then(|class| Some(T::get(class, vm, slot.slot, slot.scratch_start)))
+        })
+    })
 }
 
 pub trait V2Class {
@@ -48,6 +116,7 @@ pub trait V2Class {
 
 pub trait ForeignItem {
     type Class: V2Class + V2ClassAllocator;
+    type Source: for<'a> From<(&'a Self::Class, &'a Self)>;
 
     fn construct(class: &mut Self::Class, vm: &VM) -> Self;
 }
@@ -55,6 +124,25 @@ pub trait ForeignItem {
 pub trait V2ClassAllocator: V2Class {
     fn allocate() -> Self;
 }
+
+// impl<T> Extractable<T::Class> for T
+// where
+//     T: ForeignItem + ClassObject,
+//     T: 'static,
+// {
+//     type Output = T::Source;
+//     const SCRATCH_SPACE: usize = 1;
+//     fn extract(
+//         context: &mut T::Class, vm: &VM, slot: SlotId, _scratch_start: SlotId,
+//     ) -> Self::Output {
+//         let inst = vm.get_slot_foreign::<T>(slot).expect(&format!(
+//             "Item in slot {} is not of type {}",
+//             slot,
+//             type_name::<T>()
+//         ));
+//         Into::<T::Source>::into((&*context, inst))
+//     }
+// }
 
 impl<T> Class for T
 where
