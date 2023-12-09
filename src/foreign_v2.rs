@@ -1,9 +1,6 @@
 mod convert;
 
-use std::{
-    any::{type_name, Any, TypeId},
-    marker::PhantomData,
-};
+use std::any::{Any, TypeId};
 
 pub use convert::*;
 

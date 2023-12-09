@@ -441,7 +441,7 @@ impl ClassObject for FooInstance {
 mod foobar {
     use std::any::type_name;
 
-    use ruwren::foreign_v2::{Extractable, Slottable, V2Class, WrenAtom, WrenTo};
+    use ruwren::foreign_v2::{Slottable, V2Class, WrenTo};
 
     fn module_name() -> String {
         stringify!(foobar).replace("_", "/")
