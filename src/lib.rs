@@ -19,6 +19,8 @@ use std::{any, ffi, marker, mem, os::raw};
 mod runtime;
 #[cfg(test)]
 mod tests;
+#[cfg(feature = "derive")]
+pub use ruwren_macros::*;
 
 #[derive(Debug)]
 /// Directly internally to report errors

@@ -1,6 +1,7 @@
 use ruwren::{
     foreign_v2::{
-        get_slot_object, get_slot_value, ForeignItem, InputSlot, V2Class, V2ClassAllocator, WrenTo,
+        get_slot_object, get_slot_value, ForeignItem, InputSlot, Slottable, V2Class,
+        V2ClassAllocator, WrenTo,
     },
     ClassObject, ModuleLibrary, VMConfig, VM,
 };
@@ -345,6 +346,24 @@ impl ForeignItem for FooInstance {
     }
 }
 
+impl Slottable<Foo> for FooInstance {
+    type Context = FooClass;
+    fn scratch_size() -> usize
+    where
+        Self: Sized,
+    {
+        1
+    }
+
+    fn get(
+        ctx: &mut Self::Context, vm: &ruwren::VM, slot: ruwren::SlotId,
+        _scratch_start: ruwren::SlotId,
+    ) -> Option<Foo> {
+        let inst = vm.get_slot_foreign::<Self>(slot)?;
+        Some((&*ctx, inst).into())
+    }
+}
+
 impl ClassObject for FooInstance {
     fn initialize_pointer() -> extern "C" fn(*mut wren_sys::WrenVM)
     where
@@ -459,7 +478,7 @@ impl ClassObject for FooInstance {
 }
 
 mod foobar {
-    use ruwren::foreign_v2::{Slottable, V2Class, WrenTo};
+    use ruwren::foreign_v2::{V2Class, WrenTo};
 
     fn module_name() -> String {
         stringify!(foobar).replace("_", "/")
@@ -477,24 +496,6 @@ mod foobar {
                 scratch_start,
             )
             .unwrap();
-        }
-    }
-
-    impl Slottable<Foo> for FooInstance {
-        type Context = FooClass;
-        fn scratch_size() -> usize
-        where
-            Self: Sized,
-        {
-            1
-        }
-
-        fn get(
-            ctx: &mut Self::Context, vm: &ruwren::VM, slot: ruwren::SlotId,
-            _scratch_start: ruwren::SlotId,
-        ) -> Option<Foo> {
-            let inst = vm.get_slot_foreign::<Self>(slot)?;
-            Some((&*ctx, inst).into())
         }
     }
 

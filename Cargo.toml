@@ -17,7 +17,11 @@ members = [".", "ruwren_macros"]
 
 [dependencies]
 ruwren-sys = "0.4"
-ruwren_macros = { version = "0.1", path = "ruwren_macros" }
+ruwren_macros = { version = "0.1", path = "ruwren_macros", optional = true }
+
+[features]
+default = ["derive"]
+derive = ["dep:ruwren_macros"]
 
 [dev-dependencies]
 criterion = "0.3"

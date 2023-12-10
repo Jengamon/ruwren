@@ -1,5 +1,4 @@
-use ruwren::{ModuleLibrary, VMConfig};
-use ruwren_macros::{wren_impl, wren_module, WrenObject};
+use ruwren::{wren_impl, wren_module, ModuleLibrary, VMConfig, WrenObject};
 
 #[derive(WrenObject)]
 struct Unit;
@@ -23,7 +22,7 @@ impl Foo {
     // The return type of any method marked #[constructor] *must* be Self.
     // Only one method may be marked constructor for any #[wren_impl]
     fn new() -> FooClass {
-        Foo { bar, sbar: 0 }
+        FooClass // { bar, sbar: 0 }
     }
 
     // Basically, self changes statically
@@ -74,7 +73,7 @@ impl Foo {
 
 wren_module! {
     mod foobar {
-        pub Foo;
+        pub crate::Foo;
     }
 }
 
