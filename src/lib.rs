@@ -1,4 +1,4 @@
-//! We need to expose the Wren API in a Rust-y way
+//! We expose the Wren API in a Rust-y way
 use foreign_v2::ForeignItem;
 use std::any::{Any, TypeId};
 use std::cell::RefCell;

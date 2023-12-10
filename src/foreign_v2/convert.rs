@@ -14,7 +14,7 @@ pub trait WrenTo {
     /// VM reserves (1 + SCRATCH_SPACE) when converting
     ///
     /// For example, if ScratchSpace == 1, then conversion functions
-    /// can use `slot` and `slot + 1` in its implementation
+    /// can use `slot` and `scratch_slot` in its implementation
     const SCRATCH_SPACE: usize = 0;
     fn to_vm(self, vm: &VM, slot: SlotId, scratch_start: SlotId);
 }
@@ -33,6 +33,8 @@ where
     }
 }
 
+/// A generalization of WrenFrom that accepts a context C and can produce
+/// Self::Output
 pub trait Extractable<C> {
     type Output;
     const SCRATCH_SPACE: usize = 0;
@@ -43,7 +45,7 @@ pub trait WrenFrom: Sized {
     /// VM reserves (1 + SCRATCH_SPACE) when converting
     ///
     /// For example, if ScratchSpace == 1, then conversion functions
-    /// can use `slot` and `slot + 1` in its implementation
+    /// can use `slot` and `scratch_slot` in its implementation
     const SCRATCH_SPACE: usize = 0;
     /// Note: This should be *infallible*, so it's rare to have this directly implemented
     fn from_vm(vm: &VM, slot: SlotId, scratch_start: SlotId) -> Self;
@@ -147,8 +149,8 @@ impl WrenAtom for bool {
     }
 }
 
-// Wren strings aren't guranteed to be UTF-8, so to get a string,
-// accept a WrenBytes, then call its `into_string`
+// Wren strings aren't guaranteed to be UTF-8, so to get a string,
+// accept a WrenString, then call its `into_string`
 impl WrenTo for String {
     fn to_vm(self, vm: &VM, slot: SlotId, _scratch_start: SlotId) {
         vm.set_slot_string(slot, self)
@@ -157,9 +159,9 @@ impl WrenTo for String {
 
 wren_convert!(numeric i8,i16,i32,i64,u8,u16,u32,u64,f32,f64);
 
-pub struct WrenBytes(Vec<u8>);
+pub struct WrenString(Vec<u8>);
 
-impl WrenBytes {
+impl WrenString {
     pub fn bytes(&self) -> &[u8] {
         &self.0
     }
@@ -173,7 +175,7 @@ impl WrenBytes {
     }
 }
 
-impl WrenAtom for WrenBytes {
+impl WrenAtom for WrenString {
     fn to_vm(self, vm: &VM, slot: SlotId, _scratch_start: SlotId) {
         vm.set_slot_bytes(slot, &self.0)
     }
@@ -182,7 +184,7 @@ impl WrenAtom for WrenBytes {
     where
         Self: Sized,
     {
-        vm.get_slot_bytes(slot).map(WrenBytes)
+        vm.get_slot_bytes(slot).map(WrenString)
     }
 }
 

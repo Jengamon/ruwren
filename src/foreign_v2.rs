@@ -6,6 +6,7 @@ pub use convert::*;
 
 use crate::{Class, SlotId, VM};
 
+/// Produce O given context Self::Context?
 pub trait Slottable<O> {
     type Context;
     fn scratch_size() -> usize

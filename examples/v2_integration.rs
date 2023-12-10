@@ -22,7 +22,7 @@ impl Foo {
     // The return type of any method marked #[constructor] *must* be Self.
     // Only one method may be marked constructor for any #[wren_impl]
     fn new() -> FooClass {
-        FooClass // { bar, sbar: 0 }
+        FooClass { sbar: 0 }
     }
 
     // Basically, self changes statically
@@ -38,7 +38,7 @@ impl Foo {
     }
 
     // This is only given a FooClass
-    #[wren_impl(object(foo))]
+    #[wren_impl(object(ifoo))]
     fn static_fn(&mut self, num: i32, ifoo: Option<Foo>) -> i32 {
         if let Some(foo) = ifoo {
             eprintln!(

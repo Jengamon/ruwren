@@ -1,6 +1,6 @@
 [package]
 name = "ruwren"
-version = "0.4.4"
+version = { workspace = true }
 authors = ["Jengamon <bob.hostern@gmail.com>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
@@ -14,10 +14,12 @@ readme = "README.md"
 
 [workspace]
 members = [".", "ruwren_macros"]
+package.version = "0.4.5"
 
 [dependencies]
-ruwren-sys = "0.4"
-ruwren_macros = { version = "0.1", path = "ruwren_macros", optional = true }
+cstr_core = "0.2.6"
+ruwren-sys = "^0.4"
+ruwren_macros = { version = "^0.4", path = "ruwren_macros", optional = true }
 
 [features]
 default = ["derive"]
