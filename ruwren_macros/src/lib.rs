@@ -386,30 +386,32 @@ pub fn wren_impl(
 }
 
 struct WrenModuleItem {
-    ty: syn::Type,
+    ty: syn::TypePath,
 }
 
 impl Parse for WrenModuleItem {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         input.parse::<Token![pub]>()?;
-        let ty: Type = input.parse()?;
+        let ty = input.parse()?;
         Ok(Self { ty })
     }
 }
 
 struct WrenModuleDecl {
+    vis: syn::Visibility,
     name: syn::Ident,
     items: Punctuated<WrenModuleItem, Token![;]>,
 }
 
 impl Parse for WrenModuleDecl {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let vis = input.parse()?;
         input.parse::<Token![mod]>()?;
         let name: syn::Ident = input.parse()?;
         let content;
         braced!(content in input);
         let items = content.parse_terminated(WrenModuleItem::parse, Token![;])?;
-        Ok(Self { name, items })
+        Ok(Self { vis, name, items })
     }
 }
 
@@ -417,7 +419,22 @@ impl Parse for WrenModuleDecl {
 pub fn wren_module(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let wren_module_decl = parse_macro_input!(stream as WrenModuleDecl);
 
-    let expanded = quote! {};
+    let vis = wren_module_decl.vis;
+    let name = wren_module_decl.name;
+
+    let expanded = quote! {
+        #vis mod #name {
+            fn module_name() -> String {
+                stringify!(#name).replace("_", "/")
+            }
+
+            pub fn publish_module(lib: &mut ruwren::ModuleLibrary) {
+                let mut module = ruwren::Module::new();
+
+                lib.module(module_name(), module);
+            }
+        }
+    };
 
     proc_macro::TokenStream::from(expanded)
 }

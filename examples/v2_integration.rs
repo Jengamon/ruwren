@@ -1,3 +1,4 @@
+use ruwren::{ModuleLibrary, VMConfig};
 use ruwren_macros::{wren_impl, wren_module, WrenObject};
 
 #[derive(WrenObject)]
@@ -39,7 +40,15 @@ impl Foo {
 
     // This is only given a FooClass
     #[wren_impl(object(foo))]
-    fn static_fn(&mut self, num: i32, foo: Option<Foo>) -> i32 {
+    fn static_fn(&mut self, num: i32, ifoo: Option<Foo>) -> i32 {
+        if let Some(foo) = ifoo {
+            eprintln!(
+                "got a Foo instance, is self-consistent? {}",
+                foo.sbar == self.sbar
+            )
+        } else {
+            eprintln!("no Foo instance...");
+        }
         self.sbar += num;
         self.sbar
     }
@@ -69,4 +78,17 @@ wren_module! {
     }
 }
 
-fn main() {}
+const FOOBAR_SRC: &'static str = include_str!("v2_integration/foobar.wren");
+
+fn main() {
+    let mut lib = ModuleLibrary::new();
+    foobar::publish_module(&mut lib);
+    let vm = VMConfig::new().library(&lib).build();
+    vm.interpret("foobar", FOOBAR_SRC).unwrap();
+
+    let res = vm.interpret("main", include_str!("v2_integration/main.wren"));
+
+    if let Err(err) = res {
+        eprintln!("{}", err);
+    }
+}

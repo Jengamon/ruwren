@@ -4,4 +4,6 @@ foreign class Foo {
     foreign static sbar
     foreign instance()
     foreign static static_fn(num, foo)
+
+    toString { super.toString + " { bar = %(this.instance()), sbar = %(type.sbar) }" }
 }

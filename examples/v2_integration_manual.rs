@@ -11,6 +11,7 @@ struct Foo {
     sbar: i32,
 }
 
+// Derive macro
 impl<'a> From<(&'a FooClass, &'a FooInstance)> for Foo {
     fn from((class, instance): (&'a FooClass, &'a FooInstance)) -> Self {
         Foo {
@@ -20,13 +21,14 @@ impl<'a> From<(&'a FooClass, &'a FooInstance)> for Foo {
     }
 }
 
-impl From<Option<Foo>> for Foo {
-    fn from(value: Option<Foo>) -> Self {
-        value.expect(&format!("Failed to get value of type {}", FooClass::name()))
+impl TryFrom<Option<Foo>> for Foo {
+    type Error = ();
+
+    fn try_from(value: Option<Foo>) -> Result<Self, Self::Error> {
+        value.ok_or(())
     }
 }
 
-// Derive macro
 struct FooWrapper<'a> {
     _marker: std::marker::PhantomData<&'a ()>,
     class: &'a mut FooClass,
@@ -45,12 +47,6 @@ impl<'a> From<(&'a mut FooClass, &'a mut FooInstance)> for FooWrapper<'a> {
 
 struct FooClass {
     sbar: i32,
-}
-
-impl From<Foo> for FooClass {
-    fn from(value: Foo) -> Self {
-        Self { sbar: value.sbar }
-    }
 }
 
 struct FooInstance {
@@ -121,10 +117,17 @@ impl FooClass {
         );
     }
 
-    fn static_fn(class: &mut FooClass, num: i32, ifoo: Option<Foo>) -> i32 {
-        eprintln!("{:?}", ifoo);
-        class.sbar += num;
-        class.sbar + 5
+    fn static_fn(&mut self, num: i32, ifoo: Option<Foo>) -> i32 {
+        if let Some(foo) = ifoo {
+            eprintln!(
+                "got a Foo instance, is self-consistent? {}",
+                foo.sbar == self.sbar
+            )
+        } else {
+            eprintln!("no Foo instance...");
+        }
+        self.sbar += num;
+        self.sbar + 5
     }
 
     fn vm_static_fn(class: &mut FooClass, vm: &VM) {
@@ -134,7 +137,18 @@ impl FooClass {
 
         let arg0 = get_slot_value(vm, &arg0_calc, 2);
         let arg1 = get_slot_object::<FooInstance>(vm, &arg1_calc, 2, class);
-        let ret = FooClass::static_fn(class, arg0, arg1.into());
+        let ret = FooClass::static_fn(
+            class,
+            arg0,
+            match arg1.try_into() {
+                Ok(v) => v,
+                Err(_) => panic!(
+                    "slot {} cannot be type {}",
+                    2,
+                    std::any::type_name::<Option<Foo>>()
+                ),
+            },
+        );
         WrenTo::to_vm(ret, vm, 0, 1)
     }
 
