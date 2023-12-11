@@ -472,6 +472,7 @@ struct WrenImplValidFn {
     is_static: bool,
     is_setter: bool,
     is_getter: bool,
+    source_name: Option<syn::Ident>,
     normal_params: Vec<(usize, syn::PatType)>,
     object_params: Vec<(usize, syn::PatType)>,
     func: ImplItemFn,
@@ -480,6 +481,14 @@ struct WrenImplValidFn {
 impl WrenImplValidFn {
     fn arity(&self) -> usize {
         self.normal_params.len() + self.object_params.len()
+    }
+
+    fn source_name(&self) -> &syn::Ident {
+        self.source_name.as_ref().unwrap_or(&self.func.sig.ident)
+    }
+
+    fn base_name(&self) -> &syn::Ident {
+        &self.func.sig.ident
     }
 
     /// Generate the body for [`Self::gen_vm_fn()`] and [`Self::gen_vm_fn_constructor()`]
@@ -635,7 +644,7 @@ impl WrenImplValidFn {
 
             let class_name = generate_class_type_name(source_name);
             let wrapper_name = generate_wrapper_type_name(source_name);
-            let name = &self.func.sig.ident;
+            let name = &self.base_name();
 
             if self.is_static {
                 quote! {
@@ -671,7 +680,7 @@ impl WrenImplValidFn {
     /// and the vm as arguments and returns an instance
     fn gen_vm_fn_constructor(&self, source_name: &syn::Ident) -> proc_macro2::TokenStream {
         let wrapper_fn_name =
-            syn::Ident::new(&format!("vm_{}", self.func.sig.ident), Span::call_site());
+            syn::Ident::new(&format!("vm_{}", self.base_name()), Span::call_site());
         let instance_name = generate_instance_type_name(source_name);
         let vis = &self.func.vis;
         let body = self.gen_vm_fn_body(source_name);
@@ -687,7 +696,7 @@ impl WrenImplValidFn {
     /// and the vm as arguments
     fn gen_vm_fn(&self, source_name: &syn::Ident) -> proc_macro2::TokenStream {
         let wrapper_fn_name =
-            syn::Ident::new(&format!("vm_{}", self.func.sig.ident), Span::call_site());
+            syn::Ident::new(&format!("vm_{}", self.base_name()), Span::call_site());
         let vis = &self.func.vis;
         let body = self.gen_vm_fn_body(source_name);
         quote_spanned! {self.func.span()=>
@@ -708,9 +717,9 @@ impl WrenImplValidFn {
     fn gen_native_vm_fn(&self, source_name: &syn::Ident) -> proc_macro2::TokenStream {
         let wrapper_fn = self.gen_vm_fn(source_name);
         let wrapper_fn_name =
-            syn::Ident::new(&format!("vm_{}", self.func.sig.ident), Span::call_site());
+            syn::Ident::new(&format!("vm_{}", self.base_name()), Span::call_site());
         let native_name = syn::Ident::new(
-            &format!("native_vm_{}", self.func.sig.ident),
+            &format!("native_vm_{}", self.base_name()),
             Span::call_site(),
         );
         let instance_name = generate_instance_type_name(source_name);
@@ -905,12 +914,15 @@ impl TryFrom<(&syn::Ident, WrenImplFn)> for WrenImplValidFn {
             })
             .collect();
 
+        let mut given_name = None;
+
         let is_setter = if value.attrs.setter {
             let output = &value.func.sig.output;
             // args.len() *counts* the receiver, so it is limit + 1
             if args.len() == 2
                 && (*output == syn::ReturnType::Default || *output == parse_quote! { -> ()})
             {
+                given_name = Some(syn::Ident::new(&format!("___setter_{}", value.func.sig.ident), Span::call_site()));
                 true
             } else {
                 errors.push(format!(
@@ -935,6 +947,7 @@ impl TryFrom<(&syn::Ident, WrenImplFn)> for WrenImplValidFn {
                 && *output != syn::ReturnType::Default
                 && *output != parse_quote! { -> () }
             {
+                given_name = Some(syn::Ident::new(&format!("___getter_{}", value.func.sig.ident), Span::call_site()));
                 true
             } else {
                 errors.push(format!(
@@ -955,12 +968,21 @@ impl TryFrom<(&syn::Ident, WrenImplFn)> for WrenImplValidFn {
         if errors.len() > 0 {
             Err(errors)
         } else {
+            let mut func = value.func;
+            let source_name = if let Some(given_name) = given_name {
+                let source_name = func.sig.ident.clone();
+                func.sig.ident = given_name;
+                Some(source_name)
+            } else {
+                None
+            };
             Ok(Self {
                 receiver_ty,
                 is_getter,
                 is_setter,
+                source_name,
                 is_static: !value.attrs.instance,
-                func: value.func,
+                func,
                 normal_params,
                 object_params,
             })
@@ -1234,8 +1256,8 @@ pub fn wren_impl(
     };
 
     let function_decls = wren_object_impl.others.iter().map(|func| {
-        let name = &func.func.sig.ident;
-        let wrapper_name = syn::Ident::new(&format!("native_vm_{}", name), Span::call_site());
+        let name = func.source_name();
+        let wrapper_name = syn::Ident::new(&format!("native_vm_{}", func.base_name()), Span::call_site());
         let is_static = func.is_static;
         let arity = func.arity();
         let receiver_ty = if func.is_static {

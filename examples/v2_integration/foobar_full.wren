@@ -13,3 +13,8 @@ foreign class Teller {
     foreign static tell_foo(t)
     foreign teller(teller)
 }
+
+foreign class Storage {
+    foreign static foo=(foo)
+    foreign static foo
+}

@@ -219,6 +219,18 @@ impl WrenAtom for WrenValue {
     }
 }
 
+impl<T> WrenTo for Option<T>
+where
+    T: WrenTo,
+{
+    fn to_vm(self, vm: &VM, slot: SlotId, scratch_start: SlotId) {
+        match self {
+            Some(t) => T::to_vm(t, vm, slot, scratch_start),
+            None => vm.set_slot_null(slot),
+        }
+    }
+}
+
 impl<const N: usize, T> WrenTo for [T; N]
 where
     T: WrenAtom,

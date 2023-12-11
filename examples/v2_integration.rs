@@ -9,7 +9,7 @@ struct NewType(u8);
 #[derive(WrenObject)]
 struct Tuple(u8, u8, #[wren(static_member)] u8, u8);
 
-#[derive(WrenObject, Debug)]
+#[derive(WrenObject, Debug, Clone)]
 struct Foo {
     bar: f64,
     #[wren(static_member)]
@@ -97,10 +97,27 @@ impl Teller {
     }
 }
 
+#[derive(WrenObject, Default)]
+pub struct Storage(#[wren(static_member)] Option<Foo>);
+
+#[wren_impl]
+impl Storage {
+    #[wren_impl(object(foo), setter)]
+    fn foo(&mut self, foo: Option<Foo>) {
+        self.0 = foo;
+    }
+
+    #[wren_impl(getter)]
+    fn foo(&self) -> Option<Foo> {
+        self.0.clone()
+    }
+}
+
 wren_module! {
     mod foobar {
         pub crate::Foo;
         pub crate::Teller;
+        pub crate::Storage;
     }
 }
 
