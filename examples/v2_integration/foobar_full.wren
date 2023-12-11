@@ -9,5 +9,7 @@ foreign class Foo {
 }
 
 foreign class Teller {
+    construct new() {}
     foreign static tell_foo(t)
+    foreign teller(teller)
 }

@@ -11,3 +11,5 @@ f.bar = 42
 
 System.print(Teller.tell_foo(null))
 System.print(Teller.tell_foo(f))
+var t = Teller.new()
+System.print(t.teller(t))

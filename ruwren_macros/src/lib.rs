@@ -348,7 +348,6 @@ struct WrenImplFnAttrs {
 }
 
 struct WrenImplValidFn {
-    receiver_mut: bool,
     receiver_ty: syn::Type,
     is_static: bool,
     is_setter: bool,
@@ -556,19 +555,10 @@ impl WrenImplValidFn {
         let instance_name = generate_instance_type_name(source_name);
         let vis = &self.func.vis;
         let body = self.gen_vm_fn_body(source_name);
-        if self.receiver_mut {
-            quote! {
-                #vis fn #wrapper_fn_name(&mut self, vm: &ruwren::VM) -> #instance_name {
-                    #body
-                    ret
-                }
-            }
-        } else {
-            quote! {
-                #vis fn #wrapper_fn_name(&self, vm: &ruwren::VM) -> #instance_name {
-                    #body
-                    ret
-                }
+        quote! {
+            #vis fn #wrapper_fn_name(&mut self, vm: &ruwren::VM) -> #instance_name {
+                #body
+                ret
             }
         }
     }
@@ -580,19 +570,10 @@ impl WrenImplValidFn {
             syn::Ident::new(&format!("vm_{}", self.func.sig.ident), Span::call_site());
         let vis = &self.func.vis;
         let body = self.gen_vm_fn_body(source_name);
-        if self.receiver_mut || self.is_static {
-            quote_spanned! {self.func.span()=>
-                #vis fn #wrapper_fn_name(&mut self, vm: &ruwren::VM) {
-                    #body
-                    ruwren::foreign_v2::WrenTo::to_vm(ret, vm, 0, 1)
-                }
-            }
-        } else {
-            quote_spanned! {self.func.span()=>
-                #vis fn #wrapper_fn_name(&self, vm: &ruwren::VM) {
-                    #body
-                    ruwren::foreign_v2::WrenTo::to_vm(ret, vm, 0, 1)
-                }
+        quote_spanned! {self.func.span()=>
+            #vis fn #wrapper_fn_name(&mut self, vm: &ruwren::VM) {
+                #body
+                ruwren::foreign_v2::WrenTo::to_vm(ret, vm, 0, 1)
             }
         }
     }
@@ -616,11 +597,6 @@ impl WrenImplValidFn {
         let class_name = generate_class_type_name(source_name);
         let wrapper_name = generate_wrapper_type_name(source_name);
         let vis = &self.func.vis;
-        let get_class_ver = if self.receiver_mut || self.is_static {
-            quote!{use_class_mut}
-        } else {
-            quote!{use_class}
-        };
         let native_wrapper = if self.is_static {
             quote! {
                 #vis unsafe extern "C" fn #native_name(vm: *mut ruwren::wren_sys::WrenVM) {
@@ -636,7 +612,7 @@ impl WrenImplValidFn {
                     let vm_borrow = AssertUnwindSafe(vm.borrow());
                     match catch_unwind(|| {
                         use ruwren::foreign_v2::V2Class;
-                        vm_borrow.#get_class_ver::<#instance_name, _, _>(|vm, cls| {
+                        vm_borrow.use_class_mut::<#instance_name, _, _>(|vm, cls| {
                             let class =
                                 cls.expect(&format!("Failed to resolve class for {}", #class_name::name()));
                             #class_name::#wrapper_fn_name(class, vm)
@@ -664,21 +640,6 @@ impl WrenImplValidFn {
                 }
             }
         } else {
-            let access = if self.receiver_mut {
-                quote! {
-                    let class =
-                        cls.expect(&format!("Failed to resolve class for {}", #class_name::name()));
-                    let mut wrapper: #wrapper_name = (class, inst).into();
-                    wrapper.#wrapper_fn_name(vm)
-                }
-            } else {
-                quote! {
-                    let class =
-                        cls.expect(&format!("Failed to resolve class for {}", #class_name::name()));
-                    let wrapper: #wrapper_name = (class, inst).into();
-                    wrapper.#wrapper_fn_name(vm)
-                }
-            };
             quote! {
                 #vis unsafe extern "C" fn #native_name(vm: *mut wren_sys::WrenVM) {
                     use std::panic::{catch_unwind, set_hook, take_hook, AssertUnwindSafe};
@@ -702,7 +663,10 @@ impl WrenImplValidFn {
                                 std::any::type_name::<#instance_name>()
                             ));
                         vm_borrow.use_class_mut::<#instance_name, _, _>(|vm, cls| {
-                            #access
+                            let class =
+                                cls.expect(&format!("Failed to resolve class for {}", #class_name::name()));
+                            let mut wrapper: #wrapper_name = (class, inst).into();
+                            wrapper.#wrapper_fn_name(vm)
                         })
                     }) {
                         Ok(_) => (),
@@ -745,12 +709,11 @@ impl TryFrom<(&syn::Ident, WrenImplFn)> for WrenImplValidFn {
     type Error = Vec<String>;
 
     fn try_from((src, value): (&syn::Ident, WrenImplFn)) -> Result<Self, Self::Error> {
-        let (receiver_mut, receiver_ty, args): (_, syn::Type, _) =
-            if let Some(rec) = value.func.sig.receiver() {
+        let (receiver_ty, args): (syn::Type, _) =
+            if value.func.sig.receiver().is_some() {
                 let class_type = generate_class_type_name(src);
                 let wrapper_type = generate_wrapper_type_name(src);
                 (
-                    rec.mutability.is_some(),
                     if value.attrs.instance {
                         parse_quote!( #wrapper_type<'a> )
                     } else {
@@ -777,17 +740,7 @@ impl TryFrom<(&syn::Ident, WrenImplFn)> for WrenImplValidFn {
                 };
                 let inputs = value.func.sig.inputs.clone().into_iter().skip(1).collect();
 
-                let is_mut = match &*arg.ty {
-                    syn::Type::Reference(r) => r.mutability.is_some(),
-                    _ => {
-                        return Err(vec![format!(
-                            "method {} receiver must be a reference",
-                            value.func.sig.ident
-                        )])
-                    }
-                };
-
-                (is_mut, (*arg.ty).clone(), inputs)
+                ((*arg.ty).clone(), inputs)
             };
 
         let object_param_pairs: Vec<_> = value
@@ -883,7 +836,6 @@ impl TryFrom<(&syn::Ident, WrenImplFn)> for WrenImplValidFn {
             Err(errors)
         } else {
             Ok(Self {
-                receiver_mut,
                 receiver_ty,
                 is_getter,
                 is_setter,

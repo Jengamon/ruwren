@@ -78,7 +78,7 @@ impl Foo {
     }
 }
 
-#[derive(WrenObject, Default)]
+#[derive(WrenObject, Default, Debug)]
 struct Teller;
 
 #[wren_impl]
@@ -89,6 +89,11 @@ impl Teller {
             Some(foo) => format!("{:?}", foo),
             None => "that's not a Foo".to_string(),
         }
+    }
+
+    #[wren_impl(instance, object(haha))]
+    fn teller(&self, haha: Teller) -> String {
+        format!("There nothing to tell: {:?}", haha)
     }
 }
 
