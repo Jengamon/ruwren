@@ -104,7 +104,6 @@ fn generate_instance(
     name: &syn::Ident, fields: &syn::Fields, field_data: &[(&syn::Field, WrenObjectFieldDecl)],
 ) -> proc_macro2::TokenStream {
     let iname = generate_instance_type_name(name);
-    let wname = generate_wrapper_type_name(name);
     let cname = generate_class_type_name(name);
     match fields {
         syn::Fields::Unit => {
@@ -179,24 +178,6 @@ fn generate_instance(
                         }
                     }
                 }
-
-                struct #wname<'a> {
-                    class: &'a mut #cname,
-                    #(
-                        #wdecls
-                    ),*
-                }
-
-                impl<'a> From<(&'a mut #cname, &'a mut #iname)> for #wname<'a> {
-                    fn from((class, source): (&'a mut #cname, &'a mut #iname)) -> Self {
-                        Self {
-                            class,
-                            #(
-                                #wextract
-                            ),*
-                        }
-                    }
-                }
             }
         }
         syn::Fields::Unnamed(_) => {
@@ -208,6 +189,40 @@ fn generate_instance(
                         todo!("From impl for unnamed-fields struct")
                     }
                 }
+
+
+            }
+        }
+    }
+}
+
+fn generate_wrapper(name: &syn::Ident) -> proc_macro2::TokenStream {
+    let wname = generate_wrapper_type_name(name);
+    let iname = generate_instance_type_name(name);
+    let cname = generate_class_type_name(name);
+
+    quote! {
+        struct #wname<'a> {
+            class: &'a mut #cname,
+            instance: &'a mut #iname,
+        }
+
+        impl<'a> From<(&'a mut #cname, &'a mut #iname)> for #wname<'a> {
+            fn from((class, instance): (&'a mut #cname, &'a mut #iname)) -> Self {
+                Self { class, instance }
+            }
+        }
+
+        impl<'a> std::ops::Deref for #wname<'a> {
+            type Target = #iname;
+            fn deref(&self) -> &#iname {
+                &self.instance
+            }
+        }
+
+        impl<'a> std::ops::DerefMut for #wname<'a> {
+            fn deref_mut(&mut self) -> &mut #iname {
+                &mut self.instance
             }
         }
     }
@@ -231,7 +246,6 @@ fn generate_enhancements(
                 .map(|(f, dat)| {
                     // We can unwrap, because fields are definitely named
                     let name = f.ident.as_ref().unwrap();
-                    let ty = &f.ty;
                     if dat.static_member {
                         quote! {
                             #name: class.#name.clone()
@@ -320,12 +334,14 @@ pub fn wren_object_derive(stream: proc_macro::TokenStream) -> proc_macro::TokenS
     let class_type = generate_class(&input.ident, &struct_impl.fields, &field_decls);
     let instance_type = generate_instance(&input.ident, &struct_impl.fields, &field_decls);
     let enhancements = generate_enhancements(&input.ident, &struct_impl.fields, &field_decls);
+    let wrapper_type = generate_wrapper(&input.ident);
 
     let expanded = quote! {
         #errors
         #enhancements
         #class_type
         #instance_type
+        #wrapper_type
     };
 
     proc_macro::TokenStream::from(expanded)
