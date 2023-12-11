@@ -104,7 +104,6 @@ fn generate_instance(
     name: &syn::Ident, fields: &syn::Fields, field_data: &[(&syn::Field, WrenObjectFieldDecl)],
 ) -> proc_macro2::TokenStream {
     let iname = generate_instance_type_name(name);
-    let cname = generate_class_type_name(name);
     match fields {
         syn::Fields::Unit => {
             quote! {
@@ -131,15 +130,6 @@ fn generate_instance(
                     }
                 })
                 .collect();
-            let wextract: Vec<_> = valid
-                .iter()
-                .map(|f| {
-                    let name = f.ident.as_ref().unwrap();
-                    quote_spanned! {f.span()=>
-                        #name: &mut source.#name
-                    }
-                })
-                .collect();
             let decls: Vec<_> = valid
                 .iter()
                 .map(|f| {
@@ -148,17 +138,6 @@ fn generate_instance(
                     let ty = &f.ty;
                     quote_spanned! {f.span()=>
                         #name: #ty
-                    }
-                })
-                .collect();
-            let wdecls: Vec<_> = valid
-                .iter()
-                .map(|f| {
-                    // We can unwrap, because fields are definitely named
-                    let name = f.ident.as_ref().unwrap();
-                    let ty = &f.ty;
-                    quote_spanned! {f.span()=>
-                        #name: &'a mut #ty
                     }
                 })
                 .collect();
@@ -378,6 +357,191 @@ impl WrenImplValidFn {
         self.normal_params.len() + self.object_params.len()
     }
 
+    /// Generate the body for [`Self::gen_vm_fn()`] and [`Self::gen_vm_fn_constructor()`]
+    fn gen_vm_fn_body(&self, source_name: &syn::Ident) -> proc_macro2::TokenStream {
+        let (normal_extract, normal_arg): (Vec<_>, Vec<_>) = self
+            .normal_params
+            .iter()
+            .map(|(idx, ty)| {
+                let slot_idx = idx + 1;
+                let arg_name = syn::Ident::new(&format!("arg{}", idx), Span::call_site());
+                let arg_slot_name = syn::Ident::new(&format!("arg{}_calc", idx), Span::call_site());
+                let ty = &*ty.ty;
+                let arity = self.arity();
+                let call = if *idx == 0 {
+                    quote! {
+                        new::<_, #ty>(#slot_idx, #arity)
+                    }
+                } else {
+                    let prev_arg_slot_name =
+                        syn::Ident::new(&format!("arg{}_calc", idx - 1), Span::call_site());
+
+                    quote! {
+                        next::<_, #ty>(#slot_idx, &#prev_arg_slot_name)
+                    }
+                };
+                (
+                    quote! {
+                        let #arg_slot_name = ruwren::foreign_v2::InputSlot::#call
+                    },
+                    quote! {
+                        let #arg_name: #ty = ruwren::foreign_v2::get_slot_value(vm, &#arg_slot_name, #arity)
+                    },
+                )
+            })
+            .unzip();
+        let (object_extract, object_arg): (Vec<_>, Vec<_>) = self
+        .object_params
+        .iter()
+        .map(|(idx, ty)| {
+            let slot_idx = idx + 1;
+            let arg_name = syn::Ident::new(&format!("arg{}", idx), Span::call_site());
+            let arg_slot_name = syn::Ident::new(&format!("arg{}_calc", idx), Span::call_site());
+            let ty = &*ty.ty;
+            let source_type = match ty {
+                syn::Type::Path(tp) => {
+                    // let tp_original = tp.clone();
+                    if let Some(last) = tp.path.segments.last() {
+                        match &last.arguments {
+                            syn::PathArguments::AngleBracketed(args) => {
+                                if args.args.len() == 1 {
+                                    match args.args.iter().find_map(|a| match a {
+                                        syn::GenericArgument::Type(ty) => match ty {
+                                            Type::Path(tp) => Some(generate_instance_type(tp)),
+                                            _ => None,
+                                        }
+                                        _ => None,
+                                    }) {
+                                        Some(inst_ty) => {
+                                            quote_spanned! {tp.span()=>
+                                                #inst_ty
+                                            }
+                                        },
+                                        None => quote! {
+                                            compile_error!("invalid object type")
+                                        }
+                                    }                                  
+                                } else {
+                                    quote! {
+                                        compile_error!("invalid object type")
+                                    }
+                                }
+                            },
+                            syn::PathArguments::None => {
+                                let inst_ty = generate_instance_type(tp);
+                                quote_spanned! {tp.span()=>
+                                    #inst_ty
+                                }
+                            }
+                            _ => quote! {
+                                compile_error!("invalid object type")
+                            }
+                        }
+                    } else {
+                        quote! {
+                            compile_error!("invalid object type")
+                        }
+                    }
+                }
+                _ => quote! {
+                    compile_error!("invalid object type")
+                }
+            };
+            let arity = self.arity();
+            let call = if *idx == 0 {
+                quote! {
+                    object_new(#slot_idx, #arity)
+                }
+            } else {
+                let prev_arg_slot_name =
+                    syn::Ident::new(&format!("arg{}_calc", idx - 1), Span::call_site());
+
+                quote! {
+                    object_next(#slot_idx, &#prev_arg_slot_name)
+                }
+            };
+            let receiver = if self.is_static {
+                quote! {self}
+            } else {
+                quote! {self.class}
+            };
+            (
+                quote! {
+                    let #arg_slot_name = ruwren::foreign_v2::InputSlot::#call
+                },
+                quote! {
+                    let #arg_name = ruwren::foreign_v2::get_slot_object::<#source_type>(vm, &#arg_slot_name, #arity, #receiver)
+                },
+            )
+        })
+        .unzip();
+
+        let last_arg_check = if self.arity() > 0 {
+            let last_arg = syn::Ident::new(&format!("arg{}_calc", self.arity() - 1), Span::call_site());
+            quote! {
+                vm.ensure_slots(#last_arg.scratch_end())
+            }
+        } else {
+            quote!{}
+        };
+
+        let call = {
+            let mut call_args: Vec<_> = self.object_params.iter().map(|(i, d)| (i, d, true)).chain(self.normal_params.iter().map(|(i, d)| (i, d, false))).collect();
+            call_args.sort_by(|(a, _, _), (b, _, _)| a.cmp(b));
+            let input_args = call_args.into_iter().map(|(idx, dat, is_obj)| {
+                let arg_name = syn::Ident::new(&format!("arg{}", idx), Span::call_site());
+                let ty = &dat.ty;
+                if is_obj {
+                quote! {
+                    match #arg_name.try_into() {
+                        Ok(v) => v, 
+                        Err(_) => panic!(
+                            "slot {} cannot be type {}",
+                            2,
+                            std::any::type_name::<#ty>()
+                        ),
+                    }
+                }
+            } else {
+                quote! {
+                    #arg_name
+                }
+            }});
+
+            let class_name = generate_class_type_name(source_name);
+            let wrapper_name = generate_wrapper_type_name(source_name);
+            let name = &self.func.sig.ident;
+
+            if self.is_static {
+                quote! {
+                    #class_name::#name(self, #(#input_args),*)
+                }
+            } else {
+                quote! {
+                    #wrapper_name::#name(self, #(#input_args),*)
+                }
+            }
+        };
+
+        quote! {
+            #(
+                #normal_extract
+            );*;
+            #(
+                #object_extract
+            );*;
+            #last_arg_check;
+
+            #(
+                #normal_arg
+            );*;
+            #(
+                #object_arg
+            );*;
+            let ret = #call;
+        }
+    }
+
     /// Generate a wrapper around this function that takes a receiver
     /// and the vm as arguments and returns an instance
     fn gen_vm_fn_constructor(&self, source_name: &syn::Ident) -> proc_macro2::TokenStream {
@@ -385,17 +549,19 @@ impl WrenImplValidFn {
             syn::Ident::new(&format!("vm_{}", self.func.sig.ident), Span::call_site());
         let instance_name = generate_instance_type_name(source_name);
         let vis = &self.func.vis;
-        // TODO this should share guts with gen_vm_fn
+        let body = self.gen_vm_fn_body(source_name);
         if self.receiver_mut {
             quote! {
                 #vis fn #wrapper_fn_name(&mut self, vm: &ruwren::VM) -> #instance_name {
-                    todo!()
+                    #body
+                    ret
                 }
             }
         } else {
             quote! {
                 #vis fn #wrapper_fn_name(&self, vm: &ruwren::VM) -> #instance_name {
-                    todo!()
+                    #body
+                    ret
                 }
             }
         }
@@ -403,21 +569,23 @@ impl WrenImplValidFn {
 
     /// Generate a wrapper around this function that takes a receiver
     /// and the vm as arguments
-    fn gen_vm_fn(&self) -> proc_macro2::TokenStream {
+    fn gen_vm_fn(&self, source_name: &syn::Ident) -> proc_macro2::TokenStream {
         let wrapper_fn_name =
             syn::Ident::new(&format!("vm_{}", self.func.sig.ident), Span::call_site());
         let vis = &self.func.vis;
-        // TODO this should share guts with gen_vm_fn_constructor
+        let body = self.gen_vm_fn_body(source_name);
         if self.receiver_mut {
             quote! {
                 #vis fn #wrapper_fn_name(&mut self, vm: &ruwren::VM) {
-                    todo!()
+                    #body
+                    ruwren::foreign_v2::WrenTo::to_vm(ret, vm, 0, 1)
                 }
             }
         } else {
             quote! {
                 #vis fn #wrapper_fn_name(&self, vm: &ruwren::VM) {
-                    todo!()
+                    #body
+                    ruwren::foreign_v2::WrenTo::to_vm(ret, vm, 0, 1)
                 }
             }
         }
@@ -431,7 +599,7 @@ impl WrenImplValidFn {
     ///
     /// This wrapper function is FFI-safe. (or at least, should be)
     fn gen_native_vm_fn(&self, source_name: &syn::Ident) -> proc_macro2::TokenStream {
-        let wrapper_fn = self.gen_vm_fn();
+        let wrapper_fn = self.gen_vm_fn(source_name);
         let wrapper_fn_name =
             syn::Ident::new(&format!("vm_{}", self.func.sig.ident), Span::call_site());
         let native_name = syn::Ident::new(
@@ -629,7 +797,7 @@ impl TryFrom<(&syn::Ident, WrenImplFn)> for WrenImplValidFn {
             })
             .collect();
 
-        let (normal_params, object_params): (Vec<_>, Vec<_>) = args
+        let (object_params, normal_params): (Vec<_>, Vec<_>) = args
             .iter()
             .filter_map(|fna| match fna {
                 syn::FnArg::Receiver(_) => None,
@@ -1015,7 +1183,7 @@ pub fn wren_impl(
         .map(|func| {
             let wrapper_func = func.gen_native_vm_fn(source_ty);
             let func = &func.func;
-            quote! {
+            quote_spanned! {func.span()=>
                 #wrapper_func
                 #func
             }
@@ -1028,7 +1196,7 @@ pub fn wren_impl(
         .map(|func| {
             let wrapper_func = func.gen_native_vm_fn(source_ty);
             let func = &func.func;
-            quote! {
+            quote_spanned! {func.span()=>
                 #wrapper_func
                 #func
             }
@@ -1048,6 +1216,24 @@ pub fn wren_impl(
             #(
                 #instance_fns
             )*
+        }
+
+        impl ruwren::foreign_v2::Slottable<#source_ty> for #instance_ty {
+            type Context = #class_ty;
+            fn scratch_size() -> usize
+            where
+                Self: Sized,
+            {
+                0
+            }
+        
+            fn get(
+                ctx: &mut Self::Context, vm: &ruwren::VM, slot: ruwren::SlotId,
+                _scratch_start: ruwren::SlotId,
+            ) -> Option<#source_ty> {
+                let inst = vm.get_slot_foreign::<Self>(slot)?;
+                Some((&*ctx, inst).into())
+            }
         }
 
         impl ruwren::ClassObject for #instance_ty {

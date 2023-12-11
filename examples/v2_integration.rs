@@ -60,13 +60,20 @@ impl Foo {
 
     // an instance getter
     #[wren_impl(instance, setter)]
-    fn bar(&mut self, nbar: f64) {
-        self.bar = nbar;
+    fn bar(&mut self, nbar: Option<f64>) {
+        match nbar {
+            Some(val) => {
+                eprintln!("old {} -> new {}", self.bar, val);
+                self.bar = val;
+            }
+            None => eprintln!("arg wasn't a number, ignoring"),
+        }
     }
 
     #[wren_impl(instance)]
     // This is given a full Foo(Wrapper), not FooClass or FooInstance
     fn instance(&self) -> f64 {
+        dbg!(self.class.sbar);
         self.bar
     }
 }
