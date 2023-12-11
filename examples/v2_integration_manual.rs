@@ -383,8 +383,7 @@ impl ClassObject for FooInstance {
                     vm.borrow().vm,
                     0,
                     0,
-                    std::mem::size_of::<ruwren::ForeignObject<FooInstance>>()
-                        as ruwren::wren_sys::size_t,
+                    std::mem::size_of::<ruwren::ForeignObject<FooInstance>>(),
                 );
                 // Allocate a new object, and move it onto the heap
                 set_hook(Box::new(|_pi| {}));

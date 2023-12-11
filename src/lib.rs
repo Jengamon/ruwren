@@ -582,8 +582,8 @@ impl VMConfig {
             } else {
                 None
             };
-            config.initialHeapSize = self.initial_heap_size as wren_sys::size_t;
-            config.minHeapSize = self.min_heap_size as wren_sys::size_t;
+            config.initialHeapSize = self.initial_heap_size;
+            config.minHeapSize = self.min_heap_size;
             config.heapGrowthPercent = self.heap_growth_percent as raw::c_int;
             config.userData = vm_config as *mut ffi::c_void;
             config
@@ -653,7 +653,7 @@ impl VM {
                 self.vm,
                 slot as raw::c_int,
                 bytes as *const _ as *const raw::c_char,
-                bytes.len() as wren_sys::size_t,
+                bytes.len(),
             );
         }
     }
@@ -666,7 +666,7 @@ impl VM {
                 self.vm,
                 slot as raw::c_int,
                 string.as_ptr() as *const _,
-                string.len() as wren_sys::size_t,
+                string.len(),
             );
         }
     }
@@ -1032,7 +1032,7 @@ impl VM {
                                 self.vm,
                                 slot as raw::c_int,
                                 scratch as raw::c_int,
-                                mem::size_of::<ForeignObject<T>>() as wren_sys::size_t,
+                                mem::size_of::<ForeignObject<T>>(),
                             );
 
                             if !wptr.is_null() {

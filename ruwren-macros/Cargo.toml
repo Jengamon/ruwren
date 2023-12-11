@@ -1,5 +1,5 @@
 [package]
-name = "ruwren_macros"
+name = "ruwren-macros"
 version = { workspace = true }
 edition = "2021"
 

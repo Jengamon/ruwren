@@ -13,17 +13,16 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [workspace]
-members = [".", "ruwren_macros"]
+members = [".", "ruwren-macros", "ruwren-sys", "ruwren_web_example"]
 package.version = "0.4.5"
 
 [dependencies]
-cstr_core = "0.2.6"
-ruwren-sys = "^0.4"
-ruwren_macros = { version = "^0.4", path = "ruwren_macros", optional = true }
+ruwren-sys = { version = "^0.4", path = "ruwren-sys" }
+ruwren-macros = { version = "^0.4", path = "ruwren-macros", optional = true }
 
 [features]
 default = ["derive"]
-derive = ["dep:ruwren_macros"]
+derive = ["dep:ruwren-macros"]
 
 [dev-dependencies]
 criterion = "0.3"

@@ -709,7 +709,7 @@ impl WrenImplValidFn {
     }
 
     /// Generate a wrapper around this function that takes a
-    /// *mut wren_sys::WrenVM as an argument.
+    /// *mut ruwren::wren_sys::WrenVM as an argument.
     ///
     /// Calls [`Self::gen_vm_fn()`] internally to generate the function that
     /// this wrapper calls.
@@ -771,7 +771,7 @@ impl WrenImplValidFn {
             }
         } else {
             quote! {
-                #vis unsafe extern "C" fn #native_name(vm: *mut wren_sys::WrenVM) {
+                #vis unsafe extern "C" fn #native_name(vm: *mut ruwren::wren_sys::WrenVM) {
                     use std::panic::{catch_unwind, set_hook, take_hook, AssertUnwindSafe};
 
                     let conf = std::ptr::read_unaligned(
@@ -1343,11 +1343,11 @@ pub fn wren_impl(
         }
 
         impl ruwren::ClassObject for #instance_ty {
-            fn initialize_pointer() -> extern "C" fn(*mut wren_sys::WrenVM)
+            fn initialize_pointer() -> extern "C" fn(*mut ruwren::wren_sys::WrenVM)
             where
                 Self: Sized,
             {
-                extern "C" fn _constructor(vm: *mut wren_sys::WrenVM) {
+                extern "C" fn _constructor(vm: *mut ruwren::wren_sys::WrenVM) {
                     use ruwren::Class;
                     use std::panic::{catch_unwind, set_hook, take_hook, AssertUnwindSafe};
                     unsafe {
@@ -1361,8 +1361,7 @@ pub fn wren_impl(
                             vm.borrow().vm,
                             0,
                             0,
-                            std::mem::size_of::<ruwren::ForeignObject<#instance_ty>>()
-                                as ruwren::wren_sys::size_t,
+                            std::mem::size_of::<ruwren::ForeignObject<#instance_ty>>()    
                         );
                         // Allocate a new object, and move it onto the heap
                         set_hook(Box::new(|_pi| {}));
