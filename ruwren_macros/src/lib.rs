@@ -99,9 +99,58 @@ fn generate_class(
             }
         }
         syn::Fields::Unnamed(_) => {
+            let valid: Vec<_> = field_data
+                .iter()
+                .enumerate()
+                .filter_map(|(i, (f, decl))| if decl.static_member { Some((i, f)) } else { None })
+                .collect();
+            if valid.len() > 0 {
+            let extract: Vec<_> = valid
+                .iter()
+                .map(|(src_idx, f)| {
+                    let idx = syn::Index::from(*src_idx);
+                    quote_spanned! {f.span()=>
+                        source.#idx
+                    }
+                })
+                .collect();
+            let decls: Vec<_> = valid
+                .into_iter()
+                .map(|(_, f)| {
+                    let ty = &f.ty;
+                    quote_spanned! {f.span()=>
+                        #ty
+                    }
+                })
+                .collect();
+            quote! {
+                struct #cname (
+                    #(
+                        #decls
+                    ),*
+                );
+
+                impl From<#name> for #cname {
+                    fn from(source: #name) -> Self {
+                        Self (
+                            #(
+                                #extract
+                            ),*
+                        )
+                    }
+                }
+            }
+        } else {
             quote! {
                 struct #cname;
+
+                impl From<#name> for #cname {
+                    fn from(source: #name) -> Self {
+                        Self
+                    }
+                }
             }
+        }
         }
     }
 }
@@ -166,16 +215,57 @@ fn generate_instance(
             }
         }
         syn::Fields::Unnamed(_) => {
-            quote! {
-                struct #iname;
-
-                impl From<#name> for #iname {
-                    fn from(source: #name) -> Self {
-                        todo!("From impl for unnamed-fields struct")
+            let valid: Vec<_> = field_data
+                .iter()
+                .enumerate()
+                .filter_map(|(i, (f, decl))| if !decl.static_member { Some((i, f)) } else { None })
+                .collect();
+            if valid.len() > 0 {
+                let extract: Vec<_> = valid
+                    .iter()
+                    .map(|(src_idx, f)| {
+                        let idx = syn::Index::from(*src_idx);
+                        quote_spanned! {f.span()=>
+                            source.#idx
+                        }
+                    })
+                    .collect();
+                let decls: Vec<_> = valid
+                    .into_iter()
+                    .map(|(_, f)| {
+                        let ty = &f.ty;
+                        quote_spanned! {f.span()=>
+                            #ty
+                        }
+                    })
+                    .collect();
+                quote! {
+                    struct #iname (
+                        #(
+                            #decls
+                        ),*
+                    );
+    
+                    impl From<#name> for #iname {
+                        fn from(source: #name) -> Self {
+                            Self (
+                                #(
+                                    #extract
+                                ),*
+                            )
+                        }
                     }
                 }
-
-
+            } else {
+                quote! {
+                    struct #iname;
+    
+                    impl From<#name> for #iname {
+                        fn from(source: #name) -> Self {
+                            Self
+                        }
+                    }
+                }
             }
         }
     }
@@ -232,7 +322,7 @@ fn generate_enhancements(
                     // We can unwrap, because fields are definitely named
                     let name = f.ident.as_ref().unwrap();
                     if dat.static_member {
-                        quote! {
+                        quote_spanned! {f.span()=>
                             #name: class.#name.clone()
                         }
                     } else {
@@ -251,9 +341,38 @@ fn generate_enhancements(
             }
         }
         syn::Fields::Unnamed(_) => {
+            if field_data.len() > 0 {
+            let extract: Vec<_> = field_data
+                .iter()
+                .scan((0, 0), |(ci, ii), (f, dat)| {
+                    // We can unwrap, because fields are definitely named
+                    if dat.static_member {
+                        let idx = syn::Index::from(*ci);
+                        *ci += 1;
+                        Some(quote! {
+                            class.#idx.clone()
+                        })
+                    } else {
+                        let idx = syn::Index::from(*ii);
+                        *ii += 1;
+                        Some(quote_spanned! {f.span()=>
+                            inst.#idx.clone()
+                        })
+                    }
+                })
+                .collect();
             quote! {
-                todo!("impl for structs with unnnamed fields")
+                Self (
+                    #(
+                        #extract
+                    ),*
+                )
             }
+        } else {
+            quote! {
+                Self
+            }
+        }
         }
     };
 
