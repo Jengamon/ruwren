@@ -26,7 +26,8 @@ impl Foo {
         self.bar
     }
 
-    fn static_fn(&self, num: f64) -> f64 {
+    #[wren_impl(object(_num2))]
+    fn static_fn(&self, num: f64, _num2: Option<Foo>, _num3: Option<f64>) -> f64 {
         num + 5.0
     }
 }

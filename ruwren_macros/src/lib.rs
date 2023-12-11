@@ -515,9 +515,9 @@ impl WrenImplValidFn {
                     }
                 };
                 (
-                    quote! {
+                    (idx, quote! {
                         let #arg_slot_name = ruwren::foreign_v2::InputSlot::#call
-                    },
+                    }),
                     quote! {
                         let #arg_name: #ty = ruwren::foreign_v2::get_slot_value(vm, &#arg_slot_name, #arity)
                     },
@@ -600,9 +600,9 @@ impl WrenImplValidFn {
                 quote! {self.class}
             };
             (
-                quote! {
+                (idx, quote! {
                     let #arg_slot_name = ruwren::foreign_v2::InputSlot::#call
-                },
+                }),
                 quote! {
                     let #arg_name = ruwren::foreign_v2::get_slot_object::<#source_type>(vm, &#arg_slot_name, #arity, #receiver)
                 },
@@ -657,12 +657,13 @@ impl WrenImplValidFn {
             }
         };
 
+        let mut extractors: Vec<_> = normal_extract.into_iter().chain(object_extract.into_iter()).collect();
+        extractors.sort_by(|(a, _), (b, _)| a.cmp(b));
+        let extractors: Vec<_> = extractors.into_iter().map(|(_, e)| e).collect();
+
         quote! {
             #(
-                #normal_extract
-            );*;
-            #(
-                #object_extract
+                #extractors
             );*;
             #last_arg_check;
 
