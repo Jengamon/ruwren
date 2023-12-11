@@ -21,7 +21,11 @@ fn main() {
         .include("include")
         .include("optional")
         .include("src")
+        .std("c99")
+        .warnings(false) // We don't control the source...
         .compile("wren");
+
+    let target = env::var("TARGET").unwrap();
 
     let bindings = bindgen::Builder::default()
         .detect_include_paths(true)
@@ -29,12 +33,15 @@ fn main() {
         .allowlist_var("WREN.*")
         .allowlist_type("Wren.*")
         .allowlist_function("wren.*")
+        .clang_arg(format!("--target={target}"))
         .clang_arg("-Isrc")
         .clang_arg("-Iinclude")
         .clang_arg("-Ioptional")
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks::default()))
-        .generate()
-        .expect("Unable to generate bindings.");
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::default()));
+    // bindings
+    //     .dump_preprocessed_input()
+    //     .expect("input should be dumpable");
+    let bindings = bindings.generate().expect("Unable to generate bindings.");
 
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings
