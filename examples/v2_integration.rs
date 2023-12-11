@@ -79,7 +79,7 @@ impl Foo {
 }
 
 #[derive(WrenObject, Default, Debug)]
-struct Teller;
+pub struct Teller;
 
 #[wren_impl]
 impl Teller {

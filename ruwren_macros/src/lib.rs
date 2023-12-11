@@ -320,13 +320,14 @@ pub fn wren_object_derive(stream: proc_macro::TokenStream) -> proc_macro::TokenS
     let instance_type = generate_instance(&input.ident, &struct_impl.fields, &field_decls);
     let enhancements = generate_enhancements(&input.ident, &struct_impl.fields, &field_decls);
     let wrapper_type = generate_wrapper(&input.ident);
+    let vis = &input.vis;
 
     let expanded = quote! {
         #errors
         #enhancements
-        #class_type
-        #instance_type
-        #wrapper_type
+        #vis #class_type
+        #vis #instance_type
+        #vis #wrapper_type
     };
 
     proc_macro::TokenStream::from(expanded)
@@ -1055,7 +1056,7 @@ pub fn wren_impl(
     let allocator_fn = match &wren_object_impl.allocator {
         Some(alloc) => {
             let func = &alloc.func;
-            quote! {
+            quote_spanned! {func.span()=>
                 #func
             }
         }
@@ -1071,9 +1072,9 @@ pub fn wren_impl(
         Some(constructor) => {
             let func = &constructor.func;
             let wrapper_func = constructor.gen_vm_fn_constructor(source_ty);
-            quote! {
-                #wrapper_func
+            quote_spanned! {func.span()=>
                 #func
+                #wrapper_func
             }
         }
         None => quote! {
@@ -1147,8 +1148,8 @@ pub fn wren_impl(
             let wrapper_func = func.gen_native_vm_fn(source_ty);
             let func = &func.func;
             quote_spanned! {func.span()=>
-                #wrapper_func
                 #func
+                #wrapper_func
             }
         });
 
@@ -1160,8 +1161,8 @@ pub fn wren_impl(
             let wrapper_func = func.gen_native_vm_fn(source_ty);
             let func = &func.func;
             quote_spanned! {func.span()=>
-                #wrapper_func
                 #func
+                #wrapper_func
             }
         });
 
