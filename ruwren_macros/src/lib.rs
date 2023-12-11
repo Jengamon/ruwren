@@ -47,6 +47,12 @@ fn generate_class(
         syn::Fields::Unit => {
             quote! {
                 struct #cname;
+
+                impl From<#name> for #cname {
+                    fn from(source: #name) -> Self {
+                        Self
+                    }
+                }
             }
         }
         syn::Fields::Named(_) => {
@@ -574,15 +580,15 @@ impl WrenImplValidFn {
             syn::Ident::new(&format!("vm_{}", self.func.sig.ident), Span::call_site());
         let vis = &self.func.vis;
         let body = self.gen_vm_fn_body(source_name);
-        if self.receiver_mut {
-            quote! {
+        if self.receiver_mut || self.is_static {
+            quote_spanned! {self.func.span()=>
                 #vis fn #wrapper_fn_name(&mut self, vm: &ruwren::VM) {
                     #body
                     ruwren::foreign_v2::WrenTo::to_vm(ret, vm, 0, 1)
                 }
             }
         } else {
-            quote! {
+            quote_spanned! {self.func.span()=>
                 #vis fn #wrapper_fn_name(&self, vm: &ruwren::VM) {
                     #body
                     ruwren::foreign_v2::WrenTo::to_vm(ret, vm, 0, 1)
@@ -610,6 +616,11 @@ impl WrenImplValidFn {
         let class_name = generate_class_type_name(source_name);
         let wrapper_name = generate_wrapper_type_name(source_name);
         let vis = &self.func.vis;
+        let get_class_ver = if self.receiver_mut || self.is_static {
+            quote!{use_class_mut}
+        } else {
+            quote!{use_class}
+        };
         let native_wrapper = if self.is_static {
             quote! {
                 #vis unsafe extern "C" fn #native_name(vm: *mut ruwren::wren_sys::WrenVM) {
@@ -625,7 +636,7 @@ impl WrenImplValidFn {
                     let vm_borrow = AssertUnwindSafe(vm.borrow());
                     match catch_unwind(|| {
                         use ruwren::foreign_v2::V2Class;
-                        vm_borrow.use_class::<#instance_name, _, _>(|vm, cls| {
+                        vm_borrow.#get_class_ver::<#instance_name, _, _>(|vm, cls| {
                             let class =
                                 cls.expect(&format!("Failed to resolve class for {}", #class_name::name()));
                             #class_name::#wrapper_fn_name(class, vm)
@@ -690,7 +701,7 @@ impl WrenImplValidFn {
                                 stringify!($inf),
                                 std::any::type_name::<#instance_name>()
                             ));
-                        vm_borrow.use_class::<#instance_name, _, _>(|vm, cls| {
+                        vm_borrow.use_class_mut::<#instance_name, _, _>(|vm, cls| {
                             #access
                         })
                     }) {
@@ -1404,7 +1415,7 @@ pub fn wren_module(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
                     module.class::<#instance_ty, _>(#class_ty::name());
                 },
                 quote! {
-                    impl WrenTo for #source_ty {
+                    impl ruwren::foreign_v2::WrenTo for #source_ty {
                         fn to_vm(self, vm: &ruwren::VM, slot: ruwren::SlotId, scratch_start: ruwren::SlotId) {
                             vm.set_slot_new_foreign_scratch::<_, _, #instance_ty>(
                                 module_name(),
@@ -1423,7 +1434,7 @@ pub fn wren_module(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     let expanded = quote! {
         #vis mod #name {
-            use ruwren::foreign_v2::{V2Class, WrenTo};
+            use ruwren::foreign_v2::V2Class;
 
             fn module_name() -> String {
                 stringify!(#name).replace("_", "/")

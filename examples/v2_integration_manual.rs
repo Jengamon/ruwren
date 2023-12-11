@@ -91,7 +91,7 @@ impl FooClass {
         set_hook(Box::new(|_| {}));
         let vm_borrow = AssertUnwindSafe(vm.borrow());
         match catch_unwind(|| {
-            vm_borrow.use_class::<FooInstance, _, _>(|vm, cls| {
+            vm_borrow.use_class_mut::<FooInstance, _, _>(|vm, cls| {
                 let class =
                     cls.expect(&format!("Failed to resolve class for {}", FooClass::name()));
                 FooClass::vm_sbar(class, vm)
@@ -165,7 +165,7 @@ impl FooClass {
         set_hook(Box::new(|_| {}));
         let vm_borrow = AssertUnwindSafe(vm.borrow());
         match catch_unwind(|| {
-            vm_borrow.use_class::<FooInstance, _, _>(|vm, cls| {
+            vm_borrow.use_class_mut::<FooInstance, _, _>(|vm, cls| {
                 let class =
                     cls.expect(&format!("Failed to resolve class for {}", FooClass::name()));
                 FooClass::vm_static_fn(class, vm)
@@ -233,7 +233,7 @@ impl<'a> FooWrapper<'a> {
                     stringify!($inf),
                     std::any::type_name::<FooInstance>()
                 ));
-            vm_borrow.use_class::<FooInstance, _, _>(|vm, cls| {
+            vm_borrow.use_class_mut::<FooInstance, _, _>(|vm, cls| {
                 let class =
                     cls.expect(&format!("Failed to resolve class for {}", FooClass::name()));
                 let mut wrapper: FooWrapper = (class, inst).into();
@@ -291,7 +291,7 @@ impl<'a> FooWrapper<'a> {
                     stringify!($inf),
                     std::any::type_name::<FooInstance>()
                 ));
-            vm_borrow.use_class::<FooInstance, _, _>(|vm, cls| {
+            vm_borrow.use_class_mut::<FooInstance, _, _>(|vm, cls| {
                 let class =
                     cls.expect(&format!("Failed to resolve class for {}", FooClass::name()));
                 let wrapper: FooWrapper = (class, inst).into();

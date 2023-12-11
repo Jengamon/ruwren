@@ -283,7 +283,7 @@ impl Printer for PrintlnPrinter {
 #[derive(Debug)]
 pub struct VM {
     pub vm: *mut WrenVM,
-    classes_v2: RefCell<HashMap<TypeId, Box<dyn Any>>>,
+    classes_v2: RefCell<HashMap<TypeId, Rc<RefCell<Box<dyn Any>>>>>,
     error_recv: Receiver<WrenError>,
 }
 
@@ -923,24 +923,58 @@ impl VM {
         }
     }
 
-    /// Accesses the Foreign V2 class for a given type, if it exists (initialize it if it doesn't)
+    /// Accesses the Foreign V2 class immutably for a given type, if it exists (initialize it if it doesn't)
     pub fn use_class<T: ForeignItem + 'static, F, O>(&self, f: F) -> O
+    where
+        F: FnOnce(&VM, Option<&T::Class>) -> O,
+    {
+        let (update, class) = match self.classes_v2.borrow_mut().get_mut(&TypeId::of::<T>()) {
+            Some(cls) => (false, cls.clone()),
+            None => {
+                use crate::foreign_v2::V2ClassAllocator;
+
+                // Initialize the class (should be done in case the type is *not* constructable)
+                let class = Rc::new(RefCell::new(Box::new(T::Class::allocate()) as Box<dyn Any>));
+                (true, class)
+            }
+        };
+
+        let ret = f(self, class.borrow().downcast_ref());
+
+        if update {
+            self.classes_v2
+                .borrow_mut()
+                .insert(TypeId::of::<T>(), class);
+        }
+
+        ret
+    }
+
+    /// Accesses the Foreign V2 class for a given type, if it exists (initialize it if it doesn't)
+    pub fn use_class_mut<T: ForeignItem + 'static, F, O>(&self, f: F) -> O
     where
         F: FnOnce(&VM, Option<&mut T::Class>) -> O,
     {
-        let mut classes_v2 = self.classes_v2.borrow_mut();
+        let (update, class) = match self.classes_v2.borrow_mut().get_mut(&TypeId::of::<T>()) {
+            Some(cls) => (false, cls.clone()),
+            None => {
+                use crate::foreign_v2::V2ClassAllocator;
 
-        if let Some(cls) = classes_v2.get_mut(&TypeId::of::<T>()) {
-            f(self, cls.downcast_mut())
-        } else {
-            use crate::foreign_v2::V2ClassAllocator;
+                // Initialize the class (should be done in case the type is *not* constructable)
+                let class = Rc::new(RefCell::new(Box::new(T::Class::allocate()) as Box<dyn Any>));
+                (true, class)
+            }
+        };
 
-            // Initialize the class (should be done in case the type is *not* constructable)
-            let mut class = T::Class::allocate();
-            let ret = f(self, Some(&mut class));
-            classes_v2.insert(TypeId::of::<T>(), Box::new(class));
-            ret
+        let ret = f(self, class.borrow_mut().downcast_mut());
+
+        if update {
+            self.classes_v2
+                .borrow_mut()
+                .insert(TypeId::of::<T>(), class);
         }
+
+        ret
     }
 
     /// Looks up the specified module for the given class

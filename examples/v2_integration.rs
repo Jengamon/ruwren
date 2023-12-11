@@ -9,7 +9,7 @@ struct NewType(u8);
 #[derive(WrenObject)]
 struct Tuple(u8, u8, #[wren(static_member)] u8, u8);
 
-#[derive(WrenObject)]
+#[derive(WrenObject, Debug)]
 struct Foo {
     bar: f64,
     #[wren(static_member)]
@@ -78,13 +78,28 @@ impl Foo {
     }
 }
 
-wren_module! {
-    mod foobar {
-        pub crate::Foo;
+#[derive(WrenObject, Default)]
+struct Teller;
+
+#[wren_impl]
+impl Teller {
+    #[wren_impl(object(foo))]
+    fn tell_foo(&self, foo: Option<Foo>) -> String {
+        match foo {
+            Some(foo) => format!("{:?}", foo),
+            None => "that's not a Foo".to_string(),
+        }
     }
 }
 
-const FOOBAR_SRC: &'static str = include_str!("v2_integration/foobar.wren");
+wren_module! {
+    mod foobar {
+        pub crate::Foo;
+        pub crate::Teller;
+    }
+}
+
+const FOOBAR_SRC: &'static str = include_str!("v2_integration/foobar_full.wren");
 
 fn main() {
     let mut lib = ModuleLibrary::new();
@@ -92,7 +107,7 @@ fn main() {
     let vm = VMConfig::new().library(&lib).build();
     vm.interpret("foobar", FOOBAR_SRC).unwrap();
 
-    let res = vm.interpret("main", include_str!("v2_integration/main.wren"));
+    let res = vm.interpret("main", include_str!("v2_integration/main_full.wren"));
 
     if let Err(err) = res {
         eprintln!("{}", err);

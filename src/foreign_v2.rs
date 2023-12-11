@@ -1,6 +1,10 @@
 mod convert;
 
-use std::any::{type_name, Any, TypeId};
+use std::{
+    any::{type_name, Any, TypeId},
+    cell::RefCell,
+    rc::Rc,
+};
 
 pub use convert::*;
 
@@ -105,7 +109,7 @@ where
     T: 'static,
 {
     match T::get_unknown_context(ctx, vm, slot.slot, scratch_offset + slot.scratch_start) {
-        None => vm.use_class::<T, _, _>(|vm, cls| {
+        None => vm.use_class_mut::<T, _, _>(|vm, cls| {
             cls.and_then(|class| T::get(class, vm, slot.slot, slot.scratch_start))
         }),
         Some(obj) => obj,
@@ -135,17 +139,21 @@ where
     where
         Self: Sized,
     {
-        let mut classes_v2 = vm.classes_v2.borrow_mut();
-        if let Some(cls) = classes_v2
-            .get_mut(&TypeId::of::<T>())
-            .and_then(|mcls| mcls.downcast_mut::<T::Class>())
-        {
-            T::construct(cls, vm)
-        } else {
+        vm.use_class_mut::<Self, _, _>(|vm, cls| {
+            if let Some(class) = cls {
+                Some(T::construct(class, vm))
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| {
             let mut class = T::Class::allocate();
             let inst = T::construct(&mut class, vm);
-            classes_v2.insert(TypeId::of::<T>(), Box::new(class) as Box<T::Class>);
+            vm.classes_v2.borrow_mut().insert(
+                TypeId::of::<T>(),
+                Rc::new(RefCell::new(Box::new(class) as Box<T::Class>)),
+            );
             inst
-        }
+        })
     }
 }
