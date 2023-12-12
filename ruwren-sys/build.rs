@@ -37,7 +37,7 @@ fn main() {
         .clang_arg("-Isrc")
         .clang_arg("-Iinclude")
         .clang_arg("-Ioptional")
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks::default()));
+        .parse_callbacks(Box::<bindgen::CargoCallbacks>::default());
     // bindings
     //     .dump_preprocessed_input()
     //     .expect("input should be dumpable");

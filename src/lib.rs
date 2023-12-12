@@ -280,10 +280,12 @@ impl Printer for PrintlnPrinter {
     }
 }
 
+type ClassMap = RefCell<HashMap<TypeId, Rc<RefCell<Box<dyn Any>>>>>;
+
 #[derive(Debug)]
 pub struct VM {
     pub vm: *mut WrenVM,
-    classes_v2: RefCell<HashMap<TypeId, Rc<RefCell<Box<dyn Any>>>>>,
+    classes_v2: ClassMap,
     error_recv: Receiver<WrenError>,
 }
 

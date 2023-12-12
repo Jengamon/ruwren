@@ -14,6 +14,7 @@ struct Foo {
 
 // Derive macro
 impl<'a> From<(&'a FooClass, &'a FooInstance)> for Foo {
+    #[allow(clippy::clone_on_copy)]
     fn from((class, instance): (&'a FooClass, &'a FooInstance)) -> Self {
         Foo {
             bar: instance.bar.clone(),
@@ -87,13 +88,13 @@ impl FooClass {
         );
         let ovm = vm;
         let vm = std::rc::Weak::upgrade(&conf.vm)
-            .expect(&format!("Failed to access VM at {:p}", &conf.vm));
+            .unwrap_or_else(|| panic!("Failed to access VM at {:p}", &conf.vm));
         set_hook(Box::new(|_| {}));
         let vm_borrow = AssertUnwindSafe(vm.borrow());
         match catch_unwind(|| {
             vm_borrow.use_class_mut::<FooInstance, _, _>(|vm, cls| {
-                let class =
-                    cls.expect(&format!("Failed to resolve class for {}", FooClass::name()));
+                let class = cls
+                    .unwrap_or_else(|| panic!("Failed to resolve class for {}", FooClass::name()));
                 FooClass::vm_sbar(class, vm)
             })
         }) {
@@ -119,10 +120,10 @@ impl FooClass {
     }
 
     fn static_fn(&mut self, num: i32, ifoo: Option<Foo>) -> i32 {
-        if let Some(foo) = ifoo {
+        if let Some(foo_inst) = ifoo {
             eprintln!(
                 "got a Foo instance, is self-consistent? {}",
-                foo.sbar == self.sbar
+                foo_inst.sbar == self.sbar
             )
         } else {
             eprintln!("no Foo instance...");
@@ -141,6 +142,7 @@ impl FooClass {
         let ret = FooClass::static_fn(
             class,
             arg0,
+            #[allow(clippy::useless_conversion)]
             match arg1.try_into() {
                 Ok(v) => v,
                 Err(_) => panic!(
@@ -161,13 +163,13 @@ impl FooClass {
         );
         let ovm = vm;
         let vm = std::rc::Weak::upgrade(&conf.vm)
-            .expect(&format!("Failed to access VM at {:p}", &conf.vm));
+            .unwrap_or_else(|| panic!("Failed to access VM at {:p}", &conf.vm));
         set_hook(Box::new(|_| {}));
         let vm_borrow = AssertUnwindSafe(vm.borrow());
         match catch_unwind(|| {
             vm_borrow.use_class_mut::<FooInstance, _, _>(|vm, cls| {
-                let class =
-                    cls.expect(&format!("Failed to resolve class for {}", FooClass::name()));
+                let class = cls
+                    .unwrap_or_else(|| panic!("Failed to resolve class for {}", FooClass::name()));
                 FooClass::vm_static_fn(class, vm)
             })
         }) {
@@ -209,6 +211,7 @@ impl<'a> FooWrapper<'a> {
         vm.ensure_slots(arg0_calc.scratch_end());
 
         let arg0 = get_slot_value(vm, &arg0_calc, 1);
+        #[allow(clippy::let_unit_value)]
         let ret = self.bar(arg0);
         WrenTo::to_vm(ret, vm, 0, 1)
     }
@@ -221,21 +224,23 @@ impl<'a> FooWrapper<'a> {
         );
         let ovm = vm;
         let vm = std::rc::Weak::upgrade(&conf.vm)
-            .expect(&format!("Failed to access VM at {:p}", &conf.vm));
+            .unwrap_or_else(|| panic!("Failed to access VM at {:p}", &conf.vm));
         set_hook(Box::new(|_pi| {}));
         let vm_borrow = AssertUnwindSafe(vm.borrow());
         match catch_unwind(|| {
             vm_borrow.ensure_slots(1);
             let inst = vm_borrow
                 .get_slot_foreign_mut::<FooInstance>(0)
-                .expect(&format!(
-                    "Tried to call {0} of {1} on non-{1} type",
-                    stringify!($inf),
-                    std::any::type_name::<FooInstance>()
-                ));
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Tried to call {0} of {1} on non-{1} type",
+                        stringify!($inf),
+                        std::any::type_name::<FooInstance>()
+                    )
+                });
             vm_borrow.use_class_mut::<FooInstance, _, _>(|vm, cls| {
-                let class =
-                    cls.expect(&format!("Failed to resolve class for {}", FooClass::name()));
+                let class = cls
+                    .unwrap_or_else(|| panic!("Failed to resolve class for {}", FooClass::name()));
                 let mut wrapper: FooWrapper = (class, inst).into();
                 wrapper.vm_bar(vm)
             })
@@ -279,21 +284,23 @@ impl<'a> FooWrapper<'a> {
         );
         let ovm = vm;
         let vm = std::rc::Weak::upgrade(&conf.vm)
-            .expect(&format!("Failed to access VM at {:p}", &conf.vm));
+            .unwrap_or_else(|| panic!("Failed to access VM at {:p}", &conf.vm));
         set_hook(Box::new(|_pi| {}));
         let vm_borrow = AssertUnwindSafe(vm.borrow());
         match catch_unwind(|| {
             vm_borrow.ensure_slots(1);
             let inst = vm_borrow
                 .get_slot_foreign_mut::<FooInstance>(0)
-                .expect(&format!(
-                    "Tried to call {0} of {1} on non-{1} type",
-                    stringify!($inf),
-                    std::any::type_name::<FooInstance>()
-                ));
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Tried to call {0} of {1} on non-{1} type",
+                        stringify!($inf),
+                        std::any::type_name::<FooInstance>()
+                    )
+                });
             vm_borrow.use_class_mut::<FooInstance, _, _>(|vm, cls| {
-                let class =
-                    cls.expect(&format!("Failed to resolve class for {}", FooClass::name()));
+                let class = cls
+                    .unwrap_or_else(|| panic!("Failed to resolve class for {}", FooClass::name()));
                 let wrapper: FooWrapper = (class, inst).into();
                 wrapper.vm_instance(vm)
             })
@@ -378,7 +385,7 @@ impl ClassObject for FooInstance {
                 );
                 let ovm = vm;
                 let vm = std::rc::Weak::upgrade(&conf.vm)
-                    .expect(&format!("Failed to access VM at {:p}", &conf.vm));
+                    .unwrap_or_else(|| panic!("Failed to access VM at {:p}", &conf.vm));
                 let wptr = ruwren::wren_sys::wrenSetSlotNewForeign(
                     vm.borrow().vm,
                     0,
@@ -388,8 +395,7 @@ impl ClassObject for FooInstance {
                 // Allocate a new object, and move it onto the heap
                 set_hook(Box::new(|_pi| {}));
                 let vm_borrow = AssertUnwindSafe(vm.borrow());
-                let object = match catch_unwind(|| <FooInstance as Class>::initialize(&*vm_borrow))
-                {
+                let object = match catch_unwind(|| <FooInstance as Class>::initialize(&vm_borrow)) {
                     Ok(obj) => Some(obj),
                     Err(err) => {
                         let err_string = if let Some(strg) = err.downcast_ref::<String>() {
@@ -480,7 +486,7 @@ mod foobar {
     use ruwren::foreign_v2::{V2Class, WrenTo};
 
     fn module_name() -> String {
-        stringify!(foobar).replace("_", "/")
+        stringify!(foobar).replace('_', "/")
     }
 
     use super::{Foo, FooClass, FooInstance};
@@ -505,7 +511,7 @@ mod foobar {
     }
 }
 
-const FOOBAR_SRC: &'static str = include_str!("v2_integration/foobar.wren");
+const FOOBAR_SRC: &str = include_str!("v2_integration/foobar.wren");
 
 fn main() {
     let mut lib = ModuleLibrary::new();

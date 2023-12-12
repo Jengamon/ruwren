@@ -40,10 +40,10 @@ impl Foo {
     // This is only given a FooClass
     #[wren_impl(object(ifoo))]
     fn static_fn(&mut self, num: i32, ifoo: Option<Foo>) -> i32 {
-        if let Some(foo) = ifoo {
+        if let Some(foo_inst) = ifoo {
             eprintln!(
                 "got a Foo instance, is self-consistent? {}",
-                foo.sbar == self.sbar
+                foo_inst.sbar == self.sbar
             )
         } else {
             eprintln!("no Foo instance...");
@@ -83,10 +83,10 @@ pub struct Teller;
 
 #[wren_impl]
 impl Teller {
-    #[wren_impl(object(foo))]
-    fn tell_foo(&self, foo: Option<Foo>) -> String {
-        match foo {
-            Some(foo) => format!("{:?}", foo),
+    #[wren_impl(object(foo_inst))]
+    fn tell_foo(&self, foo_inst: Option<Foo>) -> String {
+        match foo_inst {
+            Some(foo_inst) => format!("{:?}", foo_inst),
             None => "that's not a Foo".to_string(),
         }
     }
@@ -102,9 +102,9 @@ pub struct Storage(#[wren(static_member)] Option<Foo>);
 
 #[wren_impl]
 impl Storage {
-    #[wren_impl(object(foo), setter)]
-    fn foo(&mut self, foo: Option<Foo>) {
-        self.0 = foo;
+    #[wren_impl(object(foo_inst), setter)]
+    fn foo(&mut self, foo_inst: Option<Foo>) {
+        self.0 = foo_inst;
     }
 
     #[wren_impl(getter)]
@@ -121,7 +121,7 @@ wren_module! {
     }
 }
 
-const FOOBAR_SRC: &'static str = include_str!("v2_integration/foobar_full.wren");
+const FOOBAR_SRC: &str = include_str!("v2_integration/foobar_full.wren");
 
 fn main() {
     let mut lib = ModuleLibrary::new();

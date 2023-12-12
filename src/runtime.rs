@@ -15,9 +15,8 @@ pub extern "C" fn wren_realloc(
                 std::ptr::null_mut()
             } else {
                 // allocate new memory
-                std::alloc::alloc_zeroed(
-                    std::alloc::Layout::from_size_align(new_size as usize, 8).unwrap(),
-                ) as *mut _
+                std::alloc::alloc_zeroed(std::alloc::Layout::from_size_align(new_size, 8).unwrap())
+                    as *mut _
             }
         } else {
             // Memory is an actual pointer to a location.
@@ -30,8 +29,8 @@ pub extern "C" fn wren_realloc(
             } else {
                 std::alloc::realloc(
                     memory as *mut _,
-                    std::alloc::Layout::from_size_align(new_size as usize, 8).unwrap(),
-                    new_size as usize,
+                    std::alloc::Layout::from_size_align(new_size, 8).unwrap(),
+                    new_size,
                 ) as *mut _
             }
         }

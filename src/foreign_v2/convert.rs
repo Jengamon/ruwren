@@ -98,11 +98,8 @@ impl<T: WrenTryFrom, C> Extractable<C> for Option<T> {
 impl<T: WrenTryFrom> WrenFrom for T {
     const SCRATCH_SPACE: usize = <T as WrenTryFrom>::SCRATCH_SPACE;
     fn from_vm(vm: &VM, slot: SlotId, scratch_start: SlotId) -> Self {
-        T::try_from_vm(vm, slot, scratch_start).expect(&format!(
-            "expected slot {} to be type {}",
-            slot,
-            type_name::<T>()
-        ))
+        T::try_from_vm(vm, slot, scratch_start)
+            .unwrap_or_else(|| panic!("expected slot {} to be type {}", slot, type_name::<T>()))
     }
 }
 

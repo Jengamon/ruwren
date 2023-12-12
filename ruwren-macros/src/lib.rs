@@ -23,7 +23,7 @@ fn generate_class_type(tp: &syn::TypePath) -> syn::TypePath {
     let last_item = path
         .segments
         .last_mut()
-        .expect(&format!("{:?} has no last component", tp));
+        .unwrap_or_else(|| panic!("{:?} has no last component", tp));
     last_item.ident = generate_class_type_name(&last_item.ident);
     syn::TypePath { qself, path }
 }
@@ -34,7 +34,7 @@ fn generate_instance_type(tp: &syn::TypePath) -> syn::TypePath {
     let last_item = path
         .segments
         .last_mut()
-        .expect(&format!("{:?} has no last component", tp));
+        .unwrap_or_else(|| panic!("{:?} has no last component", tp));
     last_item.ident = generate_instance_type_name(&last_item.ident);
     syn::TypePath { qself, path }
 }
@@ -102,55 +102,61 @@ fn generate_class(
             let valid: Vec<_> = field_data
                 .iter()
                 .enumerate()
-                .filter_map(|(i, (f, decl))| if decl.static_member { Some((i, f)) } else { None })
-                .collect();
-            if valid.len() > 0 {
-            let extract: Vec<_> = valid
-                .iter()
-                .map(|(src_idx, f)| {
-                    let idx = syn::Index::from(*src_idx);
-                    quote_spanned! {f.span()=>
-                        source.#idx
+                .filter_map(|(i, (f, decl))| {
+                    if decl.static_member {
+                        Some((i, f))
+                    } else {
+                        None
                     }
                 })
                 .collect();
-            let decls: Vec<_> = valid
-                .into_iter()
-                .map(|(_, f)| {
-                    let ty = &f.ty;
-                    quote_spanned! {f.span()=>
-                        #ty
-                    }
-                })
-                .collect();
-            quote! {
-                struct #cname (
-                    #(
-                        #decls
-                    ),*
-                );
+            if !valid.is_empty() {
+                let extract: Vec<_> = valid
+                    .iter()
+                    .map(|(src_idx, f)| {
+                        let idx = syn::Index::from(*src_idx);
+                        quote_spanned! {f.span()=>
+                            source.#idx
+                        }
+                    })
+                    .collect();
+                let decls: Vec<_> = valid
+                    .into_iter()
+                    .map(|(_, f)| {
+                        let ty = &f.ty;
+                        quote_spanned! {f.span()=>
+                            #ty
+                        }
+                    })
+                    .collect();
+                quote! {
+                    struct #cname (
+                        #(
+                            #decls
+                        ),*
+                    );
 
-                impl From<#name> for #cname {
-                    fn from(source: #name) -> Self {
-                        Self (
-                            #(
-                                #extract
-                            ),*
-                        )
+                    impl From<#name> for #cname {
+                        fn from(source: #name) -> Self {
+                            Self (
+                                #(
+                                    #extract
+                                ),*
+                            )
+                        }
+                    }
+                }
+            } else {
+                quote! {
+                    struct #cname;
+
+                    impl From<#name> for #cname {
+                        fn from(source: #name) -> Self {
+                            Self
+                        }
                     }
                 }
             }
-        } else {
-            quote! {
-                struct #cname;
-
-                impl From<#name> for #cname {
-                    fn from(source: #name) -> Self {
-                        Self
-                    }
-                }
-            }
-        }
         }
     }
 }
@@ -218,9 +224,15 @@ fn generate_instance(
             let valid: Vec<_> = field_data
                 .iter()
                 .enumerate()
-                .filter_map(|(i, (f, decl))| if !decl.static_member { Some((i, f)) } else { None })
+                .filter_map(|(i, (f, decl))| {
+                    if !decl.static_member {
+                        Some((i, f))
+                    } else {
+                        None
+                    }
+                })
                 .collect();
-            if valid.len() > 0 {
+            if !valid.is_empty() {
                 let extract: Vec<_> = valid
                     .iter()
                     .map(|(src_idx, f)| {
@@ -245,7 +257,7 @@ fn generate_instance(
                             #decls
                         ),*
                     );
-    
+
                     impl From<#name> for #iname {
                         fn from(source: #name) -> Self {
                             Self (
@@ -259,7 +271,7 @@ fn generate_instance(
             } else {
                 quote! {
                     struct #iname;
-    
+
                     impl From<#name> for #iname {
                         fn from(source: #name) -> Self {
                             Self
@@ -341,43 +353,44 @@ fn generate_enhancements(
             }
         }
         syn::Fields::Unnamed(_) => {
-            if field_data.len() > 0 {
-            let extract: Vec<_> = field_data
-                .iter()
-                .scan((0, 0), |(ci, ii), (f, dat)| {
-                    // We can unwrap, because fields are definitely named
-                    if dat.static_member {
-                        let idx = syn::Index::from(*ci);
-                        *ci += 1;
-                        Some(quote! {
-                            class.#idx.clone()
-                        })
-                    } else {
-                        let idx = syn::Index::from(*ii);
-                        *ii += 1;
-                        Some(quote_spanned! {f.span()=>
-                            inst.#idx.clone()
-                        })
-                    }
-                })
-                .collect();
-            quote! {
-                Self (
-                    #(
-                        #extract
-                    ),*
-                )
+            if !field_data.is_empty() {
+                let extract: Vec<_> = field_data
+                    .iter()
+                    .scan((0, 0), |(ci, ii), (f, dat)| {
+                        // We can unwrap, because fields are definitely named
+                        if dat.static_member {
+                            let idx = syn::Index::from(*ci);
+                            *ci += 1;
+                            Some(quote! {
+                                class.#idx.clone()
+                            })
+                        } else {
+                            let idx = syn::Index::from(*ii);
+                            *ii += 1;
+                            Some(quote_spanned! {f.span()=>
+                                inst.#idx.clone()
+                            })
+                        }
+                    })
+                    .collect();
+                quote! {
+                    Self (
+                        #(
+                            #extract
+                        ),*
+                    )
+                }
+            } else {
+                quote! {
+                    Self
+                }
             }
-        } else {
-            quote! {
-                Self
-            }
-        }
         }
     };
 
     quote! {
         impl<'a> From<(&'a #class_name, &'a #instance_name)> for #name {
+            #[allow(clippy::clone_on_copy)]
             fn from((class, inst): (&'a #class_name, &'a #instance_name)) -> Self {
                 #from_impl
             }
@@ -540,10 +553,7 @@ impl WrenImplValidFn {
                             syn::PathArguments::AngleBracketed(args) => {
                                 if args.args.len() == 1 {
                                     match args.args.iter().find_map(|a| match a {
-                                        syn::GenericArgument::Type(ty) => match ty {
-                                            Type::Path(tp) => Some(generate_instance_type(tp)),
-                                            _ => None,
-                                        }
+                                        syn::GenericArgument::Type(Type::Path(tp)) => Some(generate_instance_type(tp)),
                                         _ => None,
                                     }) {
                                         Some(inst_ty) => {
@@ -554,7 +564,7 @@ impl WrenImplValidFn {
                                         None => quote! {
                                             compile_error!("invalid object type")
                                         }
-                                    }                                  
+                                    }
                                 } else {
                                     quote! {
                                         compile_error!("invalid object type")
@@ -611,36 +621,43 @@ impl WrenImplValidFn {
         .unzip();
 
         let last_arg_check = if self.arity() > 0 {
-            let last_arg = syn::Ident::new(&format!("arg{}_calc", self.arity() - 1), Span::call_site());
+            let last_arg =
+                syn::Ident::new(&format!("arg{}_calc", self.arity() - 1), Span::call_site());
             quote! {
                 vm.ensure_slots(#last_arg.scratch_end())
             }
         } else {
-            quote!{}
+            quote! {}
         };
 
         let call = {
-            let mut call_args: Vec<_> = self.object_params.iter().map(|(i, d)| (i, d, true)).chain(self.normal_params.iter().map(|(i, d)| (i, d, false))).collect();
+            let mut call_args: Vec<_> = self
+                .object_params
+                .iter()
+                .map(|(i, d)| (i, d, true))
+                .chain(self.normal_params.iter().map(|(i, d)| (i, d, false)))
+                .collect();
             call_args.sort_by(|(a, _, _), (b, _, _)| a.cmp(b));
             let input_args = call_args.into_iter().map(|(idx, dat, is_obj)| {
                 let arg_name = syn::Ident::new(&format!("arg{}", idx), Span::call_site());
                 let ty = &dat.ty;
                 if is_obj {
-                quote! {
-                    match #arg_name.try_into() {
-                        Ok(v) => v, 
-                        Err(_) => panic!(
-                            "slot {} cannot be type {}",
-                            2,
-                            std::any::type_name::<#ty>()
-                        ),
+                    quote! {
+                        match #arg_name.try_into() {
+                            Ok(v) => v,
+                            Err(_) => panic!(
+                                "slot {} cannot be type {}",
+                                2,
+                                std::any::type_name::<#ty>()
+                            ),
+                        }
+                    }
+                } else {
+                    quote! {
+                        #arg_name
                     }
                 }
-            } else {
-                quote! {
-                    #arg_name
-                }
-            }});
+            });
 
             let class_name = generate_class_type_name(source_name);
             let wrapper_name = generate_wrapper_type_name(source_name);
@@ -657,7 +674,7 @@ impl WrenImplValidFn {
             }
         };
 
-        let mut extractors: Vec<_> = normal_extract.into_iter().chain(object_extract.into_iter()).collect();
+        let mut extractors: Vec<_> = normal_extract.into_iter().chain(object_extract).collect();
         extractors.sort_by(|(a, _), (b, _)| a.cmp(b));
         let extractors: Vec<_> = extractors.into_iter().map(|(_, e)| e).collect();
 
@@ -737,14 +754,14 @@ impl WrenImplValidFn {
                     );
                     let ovm = vm;
                     let vm = std::rc::Weak::upgrade(&conf.vm)
-                        .expect(&format!("Failed to access VM at {:p}", &conf.vm));
+                        .unwrap_or_else(|| panic!("Failed to access VM at {:p}", &conf.vm));
                     set_hook(Box::new(|_| {}));
                     let vm_borrow = AssertUnwindSafe(vm.borrow());
                     match catch_unwind(|| {
                         use ruwren::foreign_v2::V2Class;
                         vm_borrow.use_class_mut::<#instance_name, _, _>(|vm, cls| {
                             let class =
-                                cls.expect(&format!("Failed to resolve class for {}", #class_name::name()));
+                                cls.unwrap_or_else(|| panic!("Failed to resolve class for {}", #class_name::name()));
                             #class_name::#wrapper_fn_name(class, vm)
                         })
                     }) {
@@ -779,7 +796,7 @@ impl WrenImplValidFn {
                     );
                     let ovm = vm;
                     let vm = std::rc::Weak::upgrade(&conf.vm)
-                        .expect(&format!("Failed to access VM at {:p}", &conf.vm));
+                        .unwrap_or_else(|| panic!("Failed to access VM at {:p}", &conf.vm));
                     set_hook(Box::new(|_pi| {}));
                     let vm_borrow = AssertUnwindSafe(vm.borrow());
                     match catch_unwind(|| {
@@ -787,14 +804,14 @@ impl WrenImplValidFn {
                         vm_borrow.ensure_slots(1);
                         let inst = vm_borrow
                             .get_slot_foreign_mut::<#instance_name>(0)
-                            .expect(&format!(
+                            .unwrap_or_else(|| panic!(
                                 "Tried to call {0} of {1} on non-{1} type",
                                 stringify!($inf),
                                 std::any::type_name::<#instance_name>()
                             ));
                         vm_borrow.use_class_mut::<#instance_name, _, _>(|vm, cls| {
                             let class =
-                                cls.expect(&format!("Failed to resolve class for {}", #class_name::name()));
+                                cls.unwrap_or_else(|| panic!("Failed to resolve class for {}", #class_name::name()));
                             let mut wrapper: #wrapper_name = (class, inst).into();
                             wrapper.#wrapper_fn_name(vm)
                         })
@@ -839,39 +856,38 @@ impl TryFrom<(&syn::Ident, WrenImplFn)> for WrenImplValidFn {
     type Error = Vec<String>;
 
     fn try_from((src, value): (&syn::Ident, WrenImplFn)) -> Result<Self, Self::Error> {
-        let (receiver_ty, args): (syn::Type, _) =
-            if value.func.sig.receiver().is_some() {
-                let class_type = generate_class_type_name(src);
-                let wrapper_type = generate_wrapper_type_name(src);
-                (
-                    if value.attrs.instance {
-                        parse_quote!( #wrapper_type<'a> )
-                    } else {
-                        parse_quote!( #class_type )
-                    },
-                    value.func.sig.inputs.clone(),
-                )
-            } else {
-                let Some(arg) = value
-                    .func
-                    .sig
-                    .inputs
-                    .iter()
-                    .nth(0)
-                    .and_then(|fna| match fna {
-                        syn::FnArg::Typed(aty) => Some(aty),
-                        _ => None,
-                    })
-                else {
-                    return Err(vec![format!(
-                        "method {} must have a receiver",
-                        value.func.sig.ident
-                    )]);
-                };
-                let inputs = value.func.sig.inputs.clone().into_iter().skip(1).collect();
-
-                ((*arg.ty).clone(), inputs)
+        let (receiver_ty, args): (syn::Type, _) = if value.func.sig.receiver().is_some() {
+            let class_type = generate_class_type_name(src);
+            let wrapper_type = generate_wrapper_type_name(src);
+            (
+                if value.attrs.instance {
+                    parse_quote!( #wrapper_type<'a> )
+                } else {
+                    parse_quote!( #class_type )
+                },
+                value.func.sig.inputs.clone(),
+            )
+        } else {
+            let Some(arg) = value
+                .func
+                .sig
+                .inputs
+                .iter()
+                .nth(0)
+                .and_then(|fna| match fna {
+                    syn::FnArg::Typed(aty) => Some(aty),
+                    _ => None,
+                })
+            else {
+                return Err(vec![format!(
+                    "method {} must have a receiver",
+                    value.func.sig.ident
+                )]);
             };
+            let inputs = value.func.sig.inputs.clone().into_iter().skip(1).collect();
+
+            ((*arg.ty).clone(), inputs)
+        };
 
         let object_param_pairs: Vec<_> = value
             .attrs
@@ -923,7 +939,10 @@ impl TryFrom<(&syn::Ident, WrenImplFn)> for WrenImplValidFn {
             if args.len() == 2
                 && (*output == syn::ReturnType::Default || *output == parse_quote! { -> ()})
             {
-                given_name = Some(syn::Ident::new(&format!("___setter_{}", value.func.sig.ident), Span::call_site()));
+                given_name = Some(syn::Ident::new(
+                    &format!("___setter_{}", value.func.sig.ident),
+                    Span::call_site(),
+                ));
                 true
             } else {
                 errors.push(format!(
@@ -948,7 +967,10 @@ impl TryFrom<(&syn::Ident, WrenImplFn)> for WrenImplValidFn {
                 && *output != syn::ReturnType::Default
                 && *output != parse_quote! { -> () }
             {
-                given_name = Some(syn::Ident::new(&format!("___getter_{}", value.func.sig.ident), Span::call_site()));
+                given_name = Some(syn::Ident::new(
+                    &format!("___getter_{}", value.func.sig.ident),
+                    Span::call_site(),
+                ));
                 true
             } else {
                 errors.push(format!(
@@ -966,7 +988,7 @@ impl TryFrom<(&syn::Ident, WrenImplFn)> for WrenImplValidFn {
             false
         };
 
-        if errors.len() > 0 {
+        if !errors.is_empty() {
             Err(errors)
         } else {
             let mut func = value.func;
@@ -997,7 +1019,7 @@ impl WrenImplFn {
 
         let mut errors = vec![];
 
-        if self.func.sig.inputs.len() > 0 {
+        if !self.func.sig.inputs.is_empty() {
             errors.push("allocators cannot take any parameters".to_string());
         }
 
@@ -1024,7 +1046,7 @@ impl WrenImplFn {
             },
         }
 
-        if errors.len() > 0 {
+        if !errors.is_empty() {
             Err(errors)
         } else {
             Ok(())
@@ -1077,9 +1099,8 @@ impl WrenObjectImpl {
         };
 
         if let Some(ref mut allocator) = allocator {
-            match allocator.validate_allocator(&self.ty) {
-                Err(errs) => errors.extend(errs.into_iter()),
-                _ => {}
+            if let Err(errs) = allocator.validate_allocator(&self.ty) {
+                errors.extend(errs)
             }
         }
 
@@ -1118,7 +1139,7 @@ impl WrenObjectImpl {
                     }
                 }
                 Err(errs) => {
-                    errors.extend(errs.into_iter());
+                    errors.extend(errs);
                     None
                 }
             }
@@ -1135,14 +1156,14 @@ impl WrenObjectImpl {
                 match (&self.ty, func).try_into() {
                     Ok(vfunc) => Some(vfunc),
                     Err(errs) => {
-                        errors.extend(errs.into_iter());
+                        errors.extend(errs);
                         None
                     }
                 }
             })
             .collect();
 
-        if errors.len() > 0 {
+        if !errors.is_empty() {
             Err(errors)
         } else {
             Ok(WrenObjectValidImpl {
@@ -1258,7 +1279,10 @@ pub fn wren_impl(
 
     let function_decls = wren_object_impl.others.iter().map(|func| {
         let name = func.source_name();
-        let wrapper_name = syn::Ident::new(&format!("native_vm_{}", func.base_name()), Span::call_site());
+        let wrapper_name = syn::Ident::new(
+            &format!("native_vm_{}", func.base_name()),
+            Span::call_site(),
+        );
         let is_static = func.is_static;
         let arity = func.arity();
         let receiver_ty = if func.is_static {
@@ -1332,7 +1356,7 @@ pub fn wren_impl(
             {
                 0
             }
-        
+
             fn get(
                 ctx: &mut Self::Context, vm: &ruwren::VM, slot: ruwren::SlotId,
                 _scratch_start: ruwren::SlotId,
@@ -1356,12 +1380,12 @@ pub fn wren_impl(
                         );
                         let ovm = vm;
                         let vm = std::rc::Weak::upgrade(&conf.vm)
-                            .expect(&format!("Failed to access VM at {:p}", &conf.vm));
+                            .unwrap_or_else(|| panic!("Failed to access VM at {:p}", &conf.vm));
                         let wptr = ruwren::wren_sys::wrenSetSlotNewForeign(
                             vm.borrow().vm,
                             0,
                             0,
-                            std::mem::size_of::<ruwren::ForeignObject<#instance_ty>>()    
+                            std::mem::size_of::<ruwren::ForeignObject<#instance_ty>>()
                         );
                         // Allocate a new object, and move it onto the heap
                         set_hook(Box::new(|_pi| {}));

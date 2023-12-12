@@ -97,7 +97,7 @@ where
     O: Slottable<O, Context = ()>,
 {
     O::get(&mut (), vm, slot.slot, scratch_offset + slot.scratch_start)
-        .expect(&format! {"slot {} cannot be type {}", slot.slot, type_name::<O>()})
+        .unwrap_or_else(|| panic! {"slot {} cannot be type {}", slot.slot, type_name::<O>()})
 }
 
 pub fn get_slot_object<T>(
@@ -139,21 +139,15 @@ where
     where
         Self: Sized,
     {
-        vm.use_class_mut::<Self, _, _>(|vm, cls| {
-            if let Some(class) = cls {
-                Some(T::construct(class, vm))
-            } else {
-                None
-            }
-        })
-        .unwrap_or_else(|| {
-            let mut class = T::Class::allocate();
-            let inst = T::construct(&mut class, vm);
-            vm.classes_v2.borrow_mut().insert(
-                TypeId::of::<T>(),
-                Rc::new(RefCell::new(Box::new(class) as Box<T::Class>)),
-            );
-            inst
-        })
+        vm.use_class_mut::<Self, _, _>(|vm, cls| cls.map(|class| T::construct(class, vm)))
+            .unwrap_or_else(|| {
+                let mut class = T::Class::allocate();
+                let inst = T::construct(&mut class, vm);
+                vm.classes_v2.borrow_mut().insert(
+                    TypeId::of::<T>(),
+                    Rc::new(RefCell::new(Box::new(class) as Box<T::Class>)),
+                );
+                inst
+            })
     }
 }
