@@ -731,6 +731,7 @@ impl WrenImplValidFn {
         let body = self.gen_vm_fn_body(source_name);
         quote_spanned! {self.func.span()=>
             #[inline(always)]
+            #[allow(non_snake_case)]
             fn #wrapper_fn_name(&mut self, vm: &ruwren::VM) {
                 #body
                 ruwren::foreign_v2::WrenTo::to_vm(ret, vm, 0, 1)
@@ -759,6 +760,7 @@ impl WrenImplValidFn {
         let vis = &self.func.vis;
         let native_wrapper = if self.is_static {
             quote! {
+                #[allow(non_snake_case)]
                 #vis unsafe extern "C" fn #native_name(vm: *mut ruwren::wren_sys::WrenVM) {
                     use std::panic::{catch_unwind, set_hook, take_hook, AssertUnwindSafe};
 
