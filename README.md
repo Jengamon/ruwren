@@ -3,7 +3,7 @@
 Build status: [![Travis CI](https://travis-ci.com/Jengamon/ruwren.svg?branch=master)](https://travis-ci.com/github/Jengamon/ruwren)
 
 Here is an attempt at making some Rust Wren bindings in a more Rust style.
-It acts at times pretty transparently (you do have to deal with the slot / foreign API), but should be 
+It acts at times pretty transparently (you do have to deal with the slot / foreign API), but should be
 
 - More typesafe than using the C API directly
 - Shouldn't get in the way of quick execution
@@ -149,7 +149,7 @@ struct Foo {
 
 #[wren_impl]
 impl Foo {
-    /* 
+    /*
     you can also write out an allocator, if you
     don't want the base struct itself to implement Default
 
