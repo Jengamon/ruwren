@@ -98,8 +98,7 @@ mod v2 {
 
         #[wren_impl(instance, getter)]
         fn boxed(&self) -> Box<dyn Boxx> {
-            let bonafide: Bonafide = (&*self.class, &*self.instance).into();
-            Box::new(bonafide) as Box<dyn Boxx>
+            Box::<Bonafide>::new(self.into()) as Box<dyn Boxx>
         }
     }
 

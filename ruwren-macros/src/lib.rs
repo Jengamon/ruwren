@@ -302,6 +302,13 @@ fn generate_wrapper(name: &syn::Ident) -> proc_macro2::TokenStream {
             instance: &'a mut #iname,
         }
 
+        impl<'a> From<&#wname<'a>> for #name {
+            #[inline]
+            fn from(wrapper: &#wname<'a>) -> Self {
+                (&*wrapper.class, &*wrapper.instance).into()
+            }
+        }
+
         impl<'a> From<(&'a mut #cname, &'a mut #iname)> for #wname<'a> {
             #[inline]
             fn from((class, instance): (&'a mut #cname, &'a mut #iname)) -> Self {
