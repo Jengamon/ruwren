@@ -478,7 +478,7 @@ pub fn wren_object_derive(stream: proc_macro::TokenStream) -> proc_macro::TokenS
 }
 
 #[derive(Clone, Default, deluxe::ExtractAttributes)]
-#[deluxe(default)]
+#[deluxe(default, attributes(wren_impl))]
 struct WrenImplFnAttrs {
     // [0, 1] required (if 0, will attempt to use Default on Foo to generate FooClass)
     allocator: bool,
