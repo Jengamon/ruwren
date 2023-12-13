@@ -1,5 +1,5 @@
 foreign class Foo {
-    construct new(bar) {}
+    construct new(b) {}
     foreign bar=(val)
     foreign static sbar
     foreign instance()
