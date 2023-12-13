@@ -968,7 +968,7 @@ impl TryFrom<(&syn::Ident, WrenImplFn)> for WrenImplValidFn {
                 errors.push(format!(
                     "setter {} must take 1 non-receiver argument (takes {}), and return () (returns {})",
                     value.func.sig.ident,
-                    args.len() - 1,
+                    args.len().saturating_sub(1),
                     match output {
                         syn::ReturnType::Default => parse_quote!{()},
                         syn::ReturnType::Type(_, ty) => ty.into_token_stream(),
@@ -992,7 +992,7 @@ impl TryFrom<(&syn::Ident, WrenImplFn)> for WrenImplValidFn {
                 errors.push(format!(
                     "getter {} must take no non-receiver arguments (takes {})",
                     value.func.sig.ident,
-                    args.len() - 1,
+                    args.len().saturating_sub(1),
                 ));
                 false
             }
