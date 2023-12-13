@@ -92,7 +92,7 @@ macro_rules! create_module {
             }
         )+
 
-        mod $modl {
+        pub mod $modl {
             pub fn publish_module(lib: &mut $crate::ModuleLibrary) {
                 let mut module = $crate::Module::new();
                 module

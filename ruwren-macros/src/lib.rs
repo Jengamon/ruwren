@@ -731,7 +731,6 @@ impl WrenImplValidFn {
         let body = self.gen_vm_fn_body(source_name);
         quote_spanned! {self.func.span()=>
             #[inline(always)]
-            #[allow(non_snake_case)]
             fn #wrapper_fn_name(&mut self, vm: &ruwren::VM) {
                 #body
                 ruwren::foreign_v2::WrenTo::to_vm(ret, vm, 0, 1)
@@ -760,7 +759,6 @@ impl WrenImplValidFn {
         let vis = &self.func.vis;
         let native_wrapper = if self.is_static {
             quote! {
-                #[allow(non_snake_case)]
                 #vis unsafe extern "C" fn #native_name(vm: *mut ruwren::wren_sys::WrenVM) {
                     use std::panic::{catch_unwind, set_hook, take_hook, AssertUnwindSafe};
 
@@ -955,7 +953,7 @@ impl TryFrom<(&syn::Ident, WrenImplFn)> for WrenImplValidFn {
                 && (*output == syn::ReturnType::Default || *output == parse_quote! { -> ()})
             {
                 given_name = Some(syn::Ident::new(
-                    &format!("___setter_{}", value.func.sig.ident),
+                    &format!("setter_{}", value.func.sig.ident),
                     Span::call_site(),
                 ));
                 true
@@ -963,7 +961,7 @@ impl TryFrom<(&syn::Ident, WrenImplFn)> for WrenImplValidFn {
                 errors.push(format!(
                     "setter {} must take 1 non-receiver argument (takes {}), and return () (returns {})",
                     value.func.sig.ident,
-                    args.len(),
+                    args.len() - 1,
                     match output {
                         syn::ReturnType::Default => parse_quote!{()},
                         syn::ReturnType::Type(_, ty) => ty.into_token_stream(),
@@ -976,26 +974,18 @@ impl TryFrom<(&syn::Ident, WrenImplFn)> for WrenImplValidFn {
         };
 
         let is_getter = if value.attrs.getter {
-            let output = &value.func.sig.output;
             // args.len() *counts* the receiver, so it is limit + 1
-            if args.len() == 1
-                && *output != syn::ReturnType::Default
-                && *output != parse_quote! { -> () }
-            {
+            if args.len() == 1 {
                 given_name = Some(syn::Ident::new(
-                    &format!("___getter_{}", value.func.sig.ident),
+                    &format!("getter_{}", value.func.sig.ident),
                     Span::call_site(),
                 ));
                 true
             } else {
                 errors.push(format!(
-                    "getter {} must take no non-receiver arguments (takes {}), and return something (returns {})",
+                    "getter {} must take no non-receiver arguments (takes {})",
                     value.func.sig.ident,
-                    args.len(),
-                    match output {
-                        syn::ReturnType::Default => parse_quote!{()},
-                        syn::ReturnType::Type(_, ty) => ty.into_token_stream(),
-                    }
+                    args.len() - 1,
                 ));
                 false
             }
@@ -1053,11 +1043,16 @@ impl WrenImplFn {
                         ))
                     }
                 }
-                ty => errors.push(format!(
-                    "allocators must return {}, but allocator returned {}",
-                    class_ty.into_token_stream(),
-                    ty.into_token_stream()
-                )),
+                ty => match ty {
+                    Type::Infer(_) => {
+                        self.func.sig.output = parse_quote! { -> #class_ty };
+                    }
+                    ty => errors.push(format!(
+                        "allocators must return {}, but allocator returned {}",
+                        class_ty.into_token_stream(),
+                        ty.into_token_stream()
+                    )),
+                },
             },
         }
 
@@ -1132,7 +1127,17 @@ impl WrenObjectImpl {
             let instance_name = generate_instance_type_name(&self.ty);
             let class_name = generate_class_type_name(&self.ty);
             match TryInto::<WrenImplValidFn>::try_into((&self.ty, constructor)) {
-                Ok(constructor) => {
+                Ok(mut constructor) => {
+                    match constructor.func.sig.output {
+                        ReturnType::Default => {
+                            constructor.func.sig.output = parse_quote! { -> #instance_name };
+                        }
+                        ReturnType::Type(_, ref ty) => {
+                            if let Type::Infer(_) = **ty {
+                                constructor.func.sig.output = parse_quote! { -> #instance_name };
+                            }
+                        }
+                    }
                     if constructor.func.sig.output == parse_quote! {-> #instance_name} {
                         if constructor.receiver_ty == parse_quote! { #class_name } {
                             Some(constructor)

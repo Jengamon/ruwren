@@ -117,7 +117,12 @@ impl ModuleLibrary {
 
     /// Adds a [`Module`] with a specified `name`
     pub fn module<N: Into<String>>(&mut self, name: N, modl: Module) {
-        self.modules.insert(name.into(), modl);
+        let module_name = name.into();
+        if let Some(module) = self.modules.get_mut(&module_name) {
+            module.classes.extend(modl.classes);
+        } else {
+            self.modules.insert(module_name, modl);
+        }
     }
 
     /// Attempts to find a [`RuntimeClass`] given a `module` name and a `class` name
