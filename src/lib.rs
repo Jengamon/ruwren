@@ -1,4 +1,6 @@
 //! We expose the Wren API in a Rust-y way
+pub extern crate wren_sys;
+
 use foreign_v2::ForeignItem;
 use std::any::{Any, TypeId};
 use std::cell::RefCell;
@@ -6,8 +8,6 @@ use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use wren_sys::{wrenGetUserData, WrenConfiguration, WrenHandle, WrenVM};
-
-pub use wren_sys;
 
 mod module_loader;
 pub use module_loader::{BasicFileLoader, NullLoader};

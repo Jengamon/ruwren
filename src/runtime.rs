@@ -5,7 +5,7 @@ use wren_sys::{WrenErrorType, WrenForeignClassMethods, WrenLoadModuleResult, Wre
 // Force Wren to use Rust's allocator to allocate memory
 // Done because sometimes Wren forces us to allocate memory and give *it* ownership
 // Rust might not use the standard allocator, so we move Wren to use *our* allocator
-pub extern "C" fn wren_realloc(
+pub unsafe extern "C" fn wren_realloc(
     memory: *mut ffi::c_void, new_size: usize, _user_data: *mut ffi::c_void,
 ) -> *mut ffi::c_void {
     unsafe {
