@@ -288,7 +288,7 @@ where
 
 impl<T> WrenTryFrom for Vec<T>
 where
-    T: WrenAtom,
+    T: WrenTryFrom,
 {
     const SCRATCH_SPACE: usize = 1;
 
@@ -300,7 +300,7 @@ where
         let count = vm.get_list_count(slot)?;
         for i in 0..count {
             vm.get_list_element(slot, i as i32, scratch_start);
-            items.push(T::from_vm(vm, scratch_start, scratch_start + 1));
+            items.push(T::try_from_vm(vm, scratch_start, scratch_start + 1));
         }
         items.into_iter().collect()
     }
