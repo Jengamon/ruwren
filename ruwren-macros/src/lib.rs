@@ -1146,7 +1146,11 @@ impl WrenObjectImpl {
                         }
                     }
                     if constructor.func.sig.output == parse_quote! {-> #instance_name} {
-                        if constructor.receiver_ty == parse_quote! { #class_name } {
+                        if match constructor.receiver_ty {
+                            Type::Reference(ref tr) => tr.elem == parse_quote! { #class_name },
+                            Type::Path(ref tp) => tp.path == parse_quote! { #class_name },
+                            _ => false,
+                        } {
                             Some(constructor)
                         } else {
                             errors.push(format!(

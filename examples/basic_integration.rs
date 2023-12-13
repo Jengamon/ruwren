@@ -22,7 +22,7 @@ impl Vector {
     }
 
     #[wren_impl(constructor)]
-    fn construct(&self) -> _ {
+    fn construct(_class: &VectorClass) -> _ {
         panic!("Cannot initialize from Wren code");
     }
 
