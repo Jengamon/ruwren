@@ -9,7 +9,7 @@ description = "Low-level bindings to Wren programming language. Not affiliated w
 license = "MIT"
 repository = "https://github.com/Jengamon/ruwren"
 homepage = "http://wren.io"
-keywords = ["wren", "scripting", "embed"]
+keywords = ["wren", "scripting", "embed", "ruwren"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
