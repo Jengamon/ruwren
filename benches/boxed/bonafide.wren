@@ -3,5 +3,5 @@ foreign class DynBoxx {}
 foreign class Bonafide {
   construct new(x, y) {}
 
-  foreign box
+  foreign boxed
 }

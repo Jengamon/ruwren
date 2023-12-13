@@ -1,19 +1,28 @@
 [package]
 name = "ruwren"
-version = "0.4.4"
+version = { workspace = true }
 authors = ["Jengamon <bob.hostern@gmail.com>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Jengamon/ruwren"
 homepage = "http://wren.io"
-keywords = ["wren", "scripting", "embed"]
+keywords = ["wren", "scripting", "embed", "ruwren"]
 description = "Rusty bindings to Wren programming language"
 readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[workspace]
+members = [".", "ruwren-macros", "ruwren-sys", "ruwren_web_example"]
+package.version = "0.4.5"
+
 [dependencies]
-ruwren-sys = "0.4"
+ruwren-sys = { version = "0.4.5", path = "ruwren-sys" }
+ruwren-macros = { version = "0.4.5", path = "ruwren-macros", optional = true }
+
+[features]
+default = ["derive"]
+derive = ["dep:ruwren-macros"]
 
 [dev-dependencies]
 criterion = "0.3"

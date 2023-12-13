@@ -5,8 +5,8 @@ use wren_sys::{WrenErrorType, WrenForeignClassMethods, WrenLoadModuleResult, Wre
 // Force Wren to use Rust's allocator to allocate memory
 // Done because sometimes Wren forces us to allocate memory and give *it* ownership
 // Rust might not use the standard allocator, so we move Wren to use *our* allocator
-pub extern "C" fn wren_realloc(
-    memory: *mut ffi::c_void, new_size: wren_sys::size_t, _user_data: *mut ffi::c_void,
+pub unsafe extern "C" fn wren_realloc(
+    memory: *mut ffi::c_void, new_size: usize, _user_data: *mut ffi::c_void,
 ) -> *mut ffi::c_void {
     unsafe {
         if memory.is_null() {
@@ -15,9 +15,8 @@ pub extern "C" fn wren_realloc(
                 std::ptr::null_mut()
             } else {
                 // allocate new memory
-                std::alloc::alloc_zeroed(
-                    std::alloc::Layout::from_size_align(new_size as usize, 8).unwrap(),
-                ) as *mut _
+                std::alloc::alloc_zeroed(std::alloc::Layout::from_size_align(new_size, 8).unwrap())
+                    as *mut _
             }
         } else {
             // Memory is an actual pointer to a location.
@@ -30,8 +29,8 @@ pub extern "C" fn wren_realloc(
             } else {
                 std::alloc::realloc(
                     memory as *mut _,
-                    std::alloc::Layout::from_size_align(new_size as usize, 8).unwrap(),
-                    new_size as usize,
+                    std::alloc::Layout::from_size_align(new_size, 8).unwrap(),
+                    new_size,
                 ) as *mut _
             }
         }
@@ -50,7 +49,7 @@ pub extern "C" fn wren_error(
             conf.error_channel
                 .send(WrenError::Compile(
                     module_str.to_string_lossy().to_string(),
-                    line as i32,
+                    line,
                     message_str.to_string_lossy().to_string(),
                 ))
                 .unwrap();
@@ -69,7 +68,7 @@ pub extern "C" fn wren_error(
             conf.error_channel
                 .send(WrenError::StackTrace(
                     module_str.to_string_lossy().to_string(),
-                    line as i32,
+                    line,
                     message_str.to_string_lossy().to_string(),
                 ))
                 .unwrap();

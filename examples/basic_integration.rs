@@ -1,37 +1,49 @@
-use ruwren::{create_module, get_slot_checked, send_foreign, Class, ModuleLibrary, VMConfig, VM};
+use ruwren::{
+    get_slot_checked, send_foreign, wren_impl, Class, ModuleLibrary, VMConfig, WrenObject, VM,
+};
 
+#[derive(WrenObject)]
 struct Vector {
     x: f64,
     y: f64,
 }
 
-impl Class for Vector {
-    fn initialize(_: &VM) -> Self {
-        panic!("Cannot initialize from Wren code");
-    }
-}
-
-impl Drop for Vector {
+impl Drop for VectorInstance {
     fn drop(&mut self) {
         println!("Dropping Vector {} {}", self.x, self.y)
     }
 }
 
+#[wren_impl]
 impl Vector {
-    fn x(&self, vm: &VM) {
-        vm.set_slot_double(0, self.x);
+    #[wren_impl(allocator)]
+    fn alloc() {
+        VectorClass {}
     }
 
-    fn y(&self, vm: &VM) {
-        vm.set_slot_double(0, self.y);
+    #[wren_impl(constructor)]
+    fn construct(&self) -> _ {
+        panic!("Cannot initialize from Wren code");
     }
 
-    fn set_x(&mut self, vm: &VM) {
-        self.x = get_slot_checked!(vm => num 1);
+    #[wren_impl(instance, getter)]
+    fn x(&self) -> f64 {
+        self.x
     }
 
-    fn set_y(&mut self, vm: &VM) {
-        self.y = get_slot_checked!(vm => num 1);
+    #[wren_impl(instance, getter)]
+    fn y(&self) -> f64 {
+        self.y
+    }
+
+    #[wren_impl(instance, setter)]
+    fn x(&mut self, x: f64) {
+        self.x = x;
+    }
+
+    #[wren_impl(instance, setter)]
+    fn y(&mut self, y: f64) {
+        self.y = y;
     }
 }
 
@@ -47,30 +59,36 @@ impl Math {
     fn new_vector(vm: &VM) {
         let x = get_slot_checked!(vm => num 1);
         let y = get_slot_checked!(vm => num 2);
-        send_foreign!(vm, "maths", "Vector", Vector { x, y } => 0);
+        send_foreign!(vm, "maths", "Vector", VectorInstance { x, y } => 0);
     }
 }
 
-create_module!(
-    class("Vector") crate::Vector => vector {
-        instance(getter "x") x,
-        instance(getter "y") y,
-        instance(setter "x") set_x,
-        instance(setter "y") set_y
+mod v1 {
+    use ruwren::create_module;
+    create_module!(
+        class("Math") crate::Math => math {
+            static(fn "new_vector", 2) new_vector
+        }
+
+        module => maths
+    );
+}
+
+mod v2 {
+    use ruwren::wren_module;
+    wren_module! {
+        pub mod maths {
+            pub crate::Vector;
+        }
     }
+}
 
-    class("Math") crate::Math => math {
-        static(fn "new_vector", 2) new_vector
-    }
-
-    module => maths
-);
-
-static MATHS_MODULE_SRC: &'static str = include_str!("basic_integration/maths.wren");
+static MATHS_MODULE_SRC: &str = include_str!("basic_integration/maths.wren");
 
 fn main() {
     let mut lib = ModuleLibrary::new();
-    maths::publish_module(&mut lib);
+    v1::maths::publish_module(&mut lib);
+    v2::maths::publish_module(&mut lib);
     let vm = VMConfig::new().library(&lib).build();
     vm.interpret("maths", MATHS_MODULE_SRC).unwrap(); // Should succeed
 
