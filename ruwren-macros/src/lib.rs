@@ -728,11 +728,10 @@ impl WrenImplValidFn {
     fn gen_vm_fn(&self, source_name: &syn::Ident) -> proc_macro2::TokenStream {
         let wrapper_fn_name =
             syn::Ident::new(&format!("vm_{}", self.base_name()), Span::call_site());
-        let vis = &self.func.vis;
         let body = self.gen_vm_fn_body(source_name);
         quote_spanned! {self.func.span()=>
-            #[inline]
-            #vis fn #wrapper_fn_name(&mut self, vm: &ruwren::VM) {
+            #[inline(always)]
+            fn #wrapper_fn_name(&mut self, vm: &ruwren::VM) {
                 #body
                 ruwren::foreign_v2::WrenTo::to_vm(ret, vm, 0, 1)
             }
