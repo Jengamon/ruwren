@@ -876,38 +876,40 @@ impl TryFrom<(&syn::Ident, WrenImplFn)> for WrenImplValidFn {
     type Error = Vec<String>;
 
     fn try_from((src, value): (&syn::Ident, WrenImplFn)) -> Result<Self, Self::Error> {
-        let (receiver_ty, args): (syn::Type, _) = if value.func.sig.receiver().is_some() {
-            let class_type = generate_class_type_name(src);
-            let wrapper_type = generate_wrapper_type_name(src);
-            (
-                if value.attrs.instance {
-                    parse_quote!( #wrapper_type<'a> )
-                } else {
-                    parse_quote!( #class_type )
-                },
-                value.func.sig.inputs.clone(),
-            )
-        } else {
-            let Some(arg) = value
-                .func
-                .sig
-                .inputs
-                .iter()
-                .nth(0)
-                .and_then(|fna| match fna {
-                    syn::FnArg::Typed(aty) => Some(aty),
-                    _ => None,
-                })
-            else {
-                return Err(vec![format!(
-                    "method {} must have a receiver",
-                    value.func.sig.ident
-                )]);
-            };
-            let inputs = value.func.sig.inputs.clone().into_iter().skip(1).collect();
+        let (receiver_ty, args, has_self): (syn::Type, _, _) =
+            if value.func.sig.receiver().is_some() {
+                let class_type = generate_class_type_name(src);
+                let wrapper_type = generate_wrapper_type_name(src);
+                (
+                    if value.attrs.instance {
+                        parse_quote!( #wrapper_type<'a> )
+                    } else {
+                        parse_quote!( #class_type )
+                    },
+                    value.func.sig.inputs.clone(),
+                    true,
+                )
+            } else {
+                let Some(arg) = value
+                    .func
+                    .sig
+                    .inputs
+                    .iter()
+                    .nth(0)
+                    .and_then(|fna| match fna {
+                        syn::FnArg::Typed(aty) => Some(aty),
+                        _ => None,
+                    })
+                else {
+                    return Err(vec![format!(
+                        "method {} must have a receiver",
+                        value.func.sig.ident
+                    )]);
+                };
+                let inputs = value.func.sig.inputs.clone().into_iter().skip(1).collect();
 
-            ((*arg.ty).clone(), inputs)
-        };
+                ((*arg.ty).clone(), inputs, false)
+            };
 
         let object_param_pairs: Vec<_> = value
             .attrs
@@ -955,8 +957,8 @@ impl TryFrom<(&syn::Ident, WrenImplFn)> for WrenImplValidFn {
 
         let is_setter = if value.attrs.setter {
             let output = &value.func.sig.output;
-            // args.len() *counts* the receiver, so it is limit + 1
-            if args.len() == 2
+            let count = if has_self { 2 } else { 1 };
+            if args.len() == count
                 && (*output == syn::ReturnType::Default || *output == parse_quote! { -> ()})
             {
                 given_name = Some(syn::Ident::new(
@@ -966,9 +968,9 @@ impl TryFrom<(&syn::Ident, WrenImplFn)> for WrenImplValidFn {
                 true
             } else {
                 errors.push(format!(
-                    "setter {} must take 1 non-receiver argument (takes {}), and return () (returns {})",
+                    "setter {} must take 1 non-receiver argument (takes {} arguments), and return () (returns {})",
                     value.func.sig.ident,
-                    args.len().saturating_sub(1),
+                    args.len(),
                     match output {
                         syn::ReturnType::Default => parse_quote!{()},
                         syn::ReturnType::Type(_, ty) => ty.into_token_stream(),
@@ -981,8 +983,8 @@ impl TryFrom<(&syn::Ident, WrenImplFn)> for WrenImplValidFn {
         };
 
         let is_getter = if value.attrs.getter {
-            // args.len() *counts* the receiver, so it is limit + 1
-            if args.len() == 1 {
+            let count = if has_self { 1 } else { 0 };
+            if args.len() == count {
                 given_name = Some(syn::Ident::new(
                     &format!("getter_{}", value.func.sig.ident),
                     Span::call_site(),
@@ -990,9 +992,9 @@ impl TryFrom<(&syn::Ident, WrenImplFn)> for WrenImplValidFn {
                 true
             } else {
                 errors.push(format!(
-                    "getter {} must take no non-receiver arguments (takes {})",
+                    "getter {} must take no non-receiver arguments (takes {} arguments)",
                     value.func.sig.ident,
-                    args.len().saturating_sub(1),
+                    args.len(),
                 ));
                 false
             }

@@ -57,17 +57,17 @@ mod ext {
 
         // a static getter
         #[wren_impl(getter)]
-        fn sbar(&mut self) -> i32 {
-            self.sbar
+        fn sbar(class: &mut FooClass) -> i32 {
+            class.sbar
         }
 
         // an instance getter
         #[wren_impl(instance, setter)]
-        fn bar(&mut self, nbar: Option<f64>) {
+        fn bar(inst: &mut FooWrapper, nbar: Option<f64>) {
             match nbar {
                 Some(val) => {
-                    eprintln!("old {} -> new {}", self.bar, val);
-                    self.bar = val;
+                    eprintln!("old {} -> new {}", inst.bar, val);
+                    inst.bar = val;
                 }
                 None => eprintln!("arg wasn't a number, ignoring"),
             }
