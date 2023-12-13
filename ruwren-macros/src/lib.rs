@@ -49,6 +49,7 @@ fn generate_class(
                 struct #cname;
 
                 impl From<#name> for #cname {
+                    #[inline]
                     fn from(source: #name) -> Self {
                         Self
                     }
@@ -88,6 +89,7 @@ fn generate_class(
                 }
 
                 impl From<#name> for #cname {
+                    #[inline]
                     fn from(source: #name) -> Self {
                         Self {
                             #(
@@ -137,6 +139,7 @@ fn generate_class(
                     );
 
                     impl From<#name> for #cname {
+                        #[inline]
                         fn from(source: #name) -> Self {
                             Self (
                                 #(
@@ -151,6 +154,7 @@ fn generate_class(
                     struct #cname;
 
                     impl From<#name> for #cname {
+                        #[inline]
                         fn from(source: #name) -> Self {
                             Self
                         }
@@ -171,6 +175,7 @@ fn generate_instance(
                 struct #iname;
 
                 impl From<#name> for #iname {
+                    #[inline]
                     fn from(source: #name) -> Self {
                         Self
                     }
@@ -210,6 +215,7 @@ fn generate_instance(
                 }
 
                 impl From<#name> for #iname {
+                    #[inline]
                     fn from(source: #name) -> Self {
                         Self {
                             #(
@@ -259,6 +265,7 @@ fn generate_instance(
                     );
 
                     impl From<#name> for #iname {
+                        #[inline]
                         fn from(source: #name) -> Self {
                             Self (
                                 #(
@@ -273,6 +280,7 @@ fn generate_instance(
                     struct #iname;
 
                     impl From<#name> for #iname {
+                        #[inline]
                         fn from(source: #name) -> Self {
                             Self
                         }
@@ -295,6 +303,7 @@ fn generate_wrapper(name: &syn::Ident) -> proc_macro2::TokenStream {
         }
 
         impl<'a> From<(&'a mut #cname, &'a mut #iname)> for #wname<'a> {
+            #[inline]
             fn from((class, instance): (&'a mut #cname, &'a mut #iname)) -> Self {
                 Self { class, instance }
             }
@@ -302,12 +311,14 @@ fn generate_wrapper(name: &syn::Ident) -> proc_macro2::TokenStream {
 
         impl<'a> std::ops::Deref for #wname<'a> {
             type Target = #iname;
+            #[inline]
             fn deref(&self) -> &#iname {
                 &self.instance
             }
         }
 
         impl<'a> std::ops::DerefMut for #wname<'a> {
+            #[inline]
             fn deref_mut(&mut self) -> &mut #iname {
                 &mut self.instance
             }
@@ -391,6 +402,7 @@ fn generate_enhancements(
     quote! {
         impl<'a> From<(&'a #class_name, &'a #instance_name)> for #name {
             #[allow(clippy::clone_on_copy)]
+            #[inline]
             fn from((class, inst): (&'a #class_name, &'a #instance_name)) -> Self {
                 #from_impl
             }
@@ -703,6 +715,7 @@ impl WrenImplValidFn {
         let vis = &self.func.vis;
         let body = self.gen_vm_fn_body(source_name);
         quote! {
+            #[inline]
             #vis fn #wrapper_fn_name(&mut self, vm: &ruwren::VM) -> #instance_name {
                 #body
                 ret
@@ -718,6 +731,7 @@ impl WrenImplValidFn {
         let vis = &self.func.vis;
         let body = self.gen_vm_fn_body(source_name);
         quote_spanned! {self.func.span()=>
+            #[inline]
             #vis fn #wrapper_fn_name(&mut self, vm: &ruwren::VM) {
                 #body
                 ruwren::foreign_v2::WrenTo::to_vm(ret, vm, 0, 1)
@@ -1224,6 +1238,7 @@ pub fn wren_impl(
             }
         }
         None => quote! {
+            #[inline]
             fn ___default_alloc() -> #class_ty {
                 use std::default::Default;
                 #source_ty::default().into()
@@ -1241,6 +1256,7 @@ pub fn wren_impl(
             }
         }
         None => quote! {
+            #[inline]
             fn ___default_constructor(&self) -> #instance_ty {
                 use std::default::Default;
                 #source_ty::default().into()
@@ -1350,6 +1366,7 @@ pub fn wren_impl(
 
         impl ruwren::foreign_v2::Slottable<#source_ty> for #instance_ty {
             type Context = #class_ty;
+            #[inline]
             fn scratch_size() -> usize
             where
                 Self: Sized,
@@ -1357,6 +1374,7 @@ pub fn wren_impl(
                 0
             }
 
+            #[inline]
             fn get(
                 ctx: &mut Self::Context, vm: &ruwren::VM, slot: ruwren::SlotId,
                 _scratch_start: ruwren::SlotId,
@@ -1461,12 +1479,14 @@ pub fn wren_impl(
         }
 
         impl ruwren::foreign_v2::V2Class for #class_ty {
+            #[inline]
             fn name() -> &'static str {
                 stringify!(#source_ty)
             }
         }
 
         impl ruwren::foreign_v2::V2ClassAllocator for #class_ty {
+            #[inline]
             fn allocate() -> Self {
                 #allocator_call
             }
@@ -1476,6 +1496,7 @@ pub fn wren_impl(
             type Class = #class_ty;
             type Source = #source_ty;
 
+            #[inline]
             fn construct(class: &mut Self::Class, vm: &ruwren::VM) -> Self {
                 #constructor_call
             }
@@ -1534,6 +1555,7 @@ pub fn wren_module(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 },
                 quote! {
                     impl ruwren::foreign_v2::WrenTo for #source_ty {
+                        #[inline]
                         fn to_vm(self, vm: &ruwren::VM, slot: ruwren::SlotId, scratch_start: ruwren::SlotId) {
                             vm.set_slot_new_foreign_scratch::<_, _, #instance_ty>(
                                 module_name(),
@@ -1554,6 +1576,7 @@ pub fn wren_module(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
         #vis mod #name {
             use ruwren::foreign_v2::V2Class;
 
+            #[inline]
             fn module_name() -> String {
                 stringify!(#name).replace("_", "/")
             }
@@ -1562,6 +1585,7 @@ pub fn wren_module(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 #to_impls
             )*
 
+            #[inline]
             pub fn publish_module(lib: &mut ruwren::ModuleLibrary) {
                 let mut module = ruwren::Module::new();
 
