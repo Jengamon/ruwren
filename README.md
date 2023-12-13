@@ -136,7 +136,7 @@ fn main() {
 }
 ```
 
-## V2 Foreign
+### V2 Foreign
 
 V2 foreigns emulate Wren's class system on top of the original
 foreign API, so the above example would be:
