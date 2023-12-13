@@ -2,7 +2,7 @@ use ruwren::{
     get_slot_checked, send_foreign, wren_impl, Class, ModuleLibrary, VMConfig, WrenObject, VM,
 };
 
-#[derive(WrenObject)]
+#[derive(WrenObject, Debug, Clone)]
 struct Vector {
     x: f64,
     y: f64,
@@ -26,6 +26,11 @@ impl Vector {
         panic!("Cannot initialize from Wren code");
     }
 
+    #[wren_impl(instance)]
+    fn copy(&self) -> Vector {
+        self.into()
+    }
+
     #[wren_impl(instance, getter)]
     fn x(&self) -> f64 {
         self.x
@@ -44,6 +49,13 @@ impl Vector {
     #[wren_impl(instance, setter)]
     fn y(&mut self, y: f64) {
         self.y = y;
+    }
+
+    #[wren_impl(object(vecs))]
+    fn read(&self, vecs: Vec<Option<Vector>>) {
+        dbg!(&vecs);
+        let vecs: Vec<Vector> = vecs.into_iter().flatten().collect();
+        dbg!(vecs);
     }
 }
 

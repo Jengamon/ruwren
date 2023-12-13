@@ -138,7 +138,7 @@ impl FooClass {
         vm.ensure_slots(arg1_calc.scratch_end());
 
         let arg0 = get_slot_value(vm, &arg0_calc, 2);
-        let arg1 = get_slot_object::<FooInstance>(vm, &arg1_calc, 2, class);
+        let arg1 = get_slot_object::<FooInstance, _>(vm, &arg1_calc, 2, class);
         let ret = FooClass::static_fn(
             class,
             arg0,

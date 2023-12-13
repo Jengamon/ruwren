@@ -3,8 +3,11 @@ foreign class Vector {
     foreign x=(x)
     foreign y=(y)
 
+    foreign static read(vecs)
+
     foreign x
     foreign y
+    foreign copy()
 }
 
 class Math {

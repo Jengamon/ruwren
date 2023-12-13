@@ -47,6 +47,53 @@ where
     }
 }
 
+impl<T> Slottable<Vec<Option<T::Source>>> for T
+where
+    T: Slottable<T::Source, Context = T::Class> + ForeignItem,
+{
+    type Context = T::Class;
+
+    fn scratch_size() -> usize
+    where
+        Self: Sized,
+    {
+        T::scratch_size() + 1
+    }
+
+    fn get(
+        ctx: &mut Self::Context, vm: &VM, slot: SlotId, scratch_start: SlotId,
+    ) -> Option<Vec<Option<T::Source>>> {
+        let count = vm.get_list_count(slot)?;
+        let mut items = vec![];
+        for i in 0..count {
+            vm.get_list_element(slot, i as i32, scratch_start);
+            items.push(T::get(ctx, vm, scratch_start, scratch_start + 1));
+        }
+        Some(items)
+    }
+}
+
+impl<T> Slottable<Option<T::Source>> for T
+where
+    T: Slottable<T::Source, Context = T::Class> + ForeignItem,
+    T::Class: 'static,
+{
+    type Context = T::Class;
+
+    fn scratch_size() -> usize
+    where
+        Self: Sized,
+    {
+        T::scratch_size()
+    }
+
+    fn get(
+        ctx: &mut Self::Context, vm: &VM, slot: SlotId, scratch_start: SlotId,
+    ) -> Option<Option<T::Source>> {
+        T::get_unknown_context(ctx, vm, slot, scratch_start)
+    }
+}
+
 #[derive(Debug)]
 pub struct InputSlot {
     slot: SlotId,
@@ -100,11 +147,11 @@ where
         .unwrap_or_else(|| panic! {"slot {} cannot be type {}", slot.slot, type_name::<O>()})
 }
 
-pub fn get_slot_object<T>(
+pub fn get_slot_object<T, O>(
     vm: &VM, slot: &InputSlot, scratch_offset: usize, ctx: &mut dyn Any,
-) -> Option<T::Source>
+) -> Option<O>
 where
-    T: ForeignItem + Slottable<T::Source, Context = T::Class>,
+    T: ForeignItem + Slottable<O, Context = T::Class>,
     T::Class: 'static,
     T: 'static,
 {

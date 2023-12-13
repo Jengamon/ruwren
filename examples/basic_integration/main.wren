@@ -13,8 +13,12 @@ System.print(vector)
 System.print(vector.x)
 System.print(vector.y)
 
+var ovector = vector.copy()
+
 vector.x = (10.2)
 vector.y = (vector.x * 2)
 
 System.print(vector.x)
 System.print(vector.y)
+
+Vector.read([vector, ovector, vector])

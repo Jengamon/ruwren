@@ -510,6 +510,37 @@ struct WrenImplValidFn {
     func: ImplItemFn,
 }
 
+struct FindInnerType {
+    discovered_tp: Option<syn::TypePath>,
+}
+
+impl<'a> syn::visit::Visit<'a> for FindInnerType {
+    fn visit_type_path(&mut self, tp: &'a syn::TypePath) {
+        if let Some(p) = tp.path.segments.last() {
+            match &p.arguments {
+                syn::PathArguments::AngleBracketed(args) => {
+                    self.visit_angle_bracketed_generic_arguments(args);
+                }
+                syn::PathArguments::None => {
+                    self.discovered_tp = Some(tp.clone());
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn visit_angle_bracketed_generic_arguments(
+        &mut self, args: &'a syn::AngleBracketedGenericArguments,
+    ) {
+        if let Some(t) = args.args.iter().find_map(|a| match a {
+            syn::GenericArgument::Type(t) => Some(t),
+            _ => None,
+        }) {
+            self.visit_type(t)
+        }
+    }
+}
+
 impl WrenImplValidFn {
     fn arity(&self) -> usize {
         self.normal_params.len() + self.object_params.len()
@@ -560,56 +591,22 @@ impl WrenImplValidFn {
         .object_params
         .iter()
         .map(|(idx, ty)| {
+            use syn::visit::Visit;
+
             let slot_idx = idx + 1;
             let arg_name = syn::Ident::new(&format!("arg{}", idx), Span::call_site());
             let arg_slot_name = syn::Ident::new(&format!("arg{}_calc", idx), Span::call_site());
             let ty = &*ty.ty;
-            let source_type = match ty {
-                syn::Type::Path(tp) => {
-                    // let tp_original = tp.clone();
-                    if let Some(last) = tp.path.segments.last() {
-                        match &last.arguments {
-                            syn::PathArguments::AngleBracketed(args) => {
-                                if args.args.len() == 1 {
-                                    match args.args.iter().find_map(|a| match a {
-                                        syn::GenericArgument::Type(Type::Path(tp)) => Some(generate_instance_type(tp)),
-                                        _ => None,
-                                    }) {
-                                        Some(inst_ty) => {
-                                            quote_spanned! {tp.span()=>
-                                                #inst_ty
-                                            }
-                                        },
-                                        None => quote! {
-                                            compile_error!("invalid object type")
-                                        }
-                                    }
-                                } else {
-                                    quote! {
-                                        compile_error!("invalid object type")
-                                    }
-                                }
-                            },
-                            syn::PathArguments::None => {
-                                let inst_ty = generate_instance_type(tp);
-                                quote_spanned! {tp.span()=>
-                                    #inst_ty
-                                }
-                            }
-                            _ => quote! {
-                                compile_error!("invalid object type")
-                            }
-                        }
-                    } else {
-                        quote! {
-                            compile_error!("invalid object type")
-                        }
-                    }
+            let mut fit = FindInnerType { discovered_tp: None };
+            fit.visit_type(ty);
+            let source_type = fit.discovered_tp.take().map(|tp| {
+                let inst_ty = generate_instance_type(&tp);
+                quote_spanned! {tp.span()=>
+                    #inst_ty
                 }
-                _ => quote! {
-                    compile_error!("invalid object type")
-                }
-            };
+            }).unwrap_or(quote! {
+                compile_error!("invalid object type")
+            });
             let arity = self.arity();
             let call = if *idx == 0 {
                 quote! {
@@ -633,7 +630,10 @@ impl WrenImplValidFn {
                     let #arg_slot_name = ruwren::foreign_v2::InputSlot::#call
                 }),
                 quote! {
-                    let #arg_name = ruwren::foreign_v2::get_slot_object::<#source_type>(vm, &#arg_slot_name, #arity, #receiver)
+                    let #arg_name: #ty = match ruwren::foreign_v2::get_slot_object::<#source_type, _>(vm, &#arg_slot_name, #arity, #receiver) {
+                        Some(v) => v,
+                        None => todo!(),
+                    }
                 },
             )
         })
@@ -659,6 +659,7 @@ impl WrenImplValidFn {
             call_args.sort_by(|(a, _, _), (b, _, _)| a.cmp(b));
             let input_args = call_args.into_iter().map(|(idx, dat, is_obj)| {
                 let arg_name = syn::Ident::new(&format!("arg{}", idx), Span::call_site());
+                let slot_idx = idx + 1;
                 let ty = &dat.ty;
                 if is_obj {
                     quote! {
@@ -666,7 +667,7 @@ impl WrenImplValidFn {
                             Ok(v) => v,
                             Err(_) => panic!(
                                 "slot {} cannot be type {}",
-                                2,
+                                #slot_idx,
                                 std::any::type_name::<#ty>()
                             ),
                         }
