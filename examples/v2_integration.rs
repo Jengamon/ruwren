@@ -34,6 +34,11 @@ mod ext {
         // any method marked "instance" -> FooWrapper
         // getter means that other than self, method cannot accept any arguments
         // setter means that other than self, method accept 1 argument, and return must be ()
+        //
+        // New WASM considerations:
+        // taking in a T means that if Wren passes in *any* other type, the runtime will flip out,
+        // prefer taking in Option<T> and handling the None case (the case when Wren tried to give
+        // you a data of a type that wasn't the one you declared)
 
         #[wren_impl(constructor)]
         fn construct(&mut self, bar: f64) -> Result<FooInstance, String> {
