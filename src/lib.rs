@@ -1044,7 +1044,7 @@ impl VM {
 
                             if !wptr.is_null() {
                                 // Move the ForeignObject into the pointer
-                                std::ptr::write(wptr as *mut _, new_obj);
+                                std::ptr::write_unaligned(wptr as *mut _, new_obj);
                             }
 
                             // Reinterpret the pointer as an object if we were successful

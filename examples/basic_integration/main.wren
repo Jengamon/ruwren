@@ -21,4 +21,4 @@ vector.y = (vector.x * 2)
 System.print(vector.x)
 System.print(vector.y)
 
-Vector.read([vector, ovector, vector])
+System.print(Vector.read([vector, ovector, vector]))

@@ -51,11 +51,12 @@ impl Vector {
         self.y = y;
     }
 
+    // Valid object types are T, Option<T>, and Vec<Option<T>>
     #[wren_impl(object(vecs))]
-    fn read(&self, vecs: Vec<Option<Vector>>) {
+    fn read(&self, vecs: Vec<Option<Vector>>) -> Option<Vec<Vector>> {
         dbg!(&vecs);
-        let vecs: Vec<Vector> = vecs.into_iter().flatten().collect();
-        dbg!(vecs);
+        vecs.into_iter().collect()
+        // todo!()
     }
 }
 

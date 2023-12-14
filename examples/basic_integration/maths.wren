@@ -5,6 +5,8 @@ foreign class Vector {
 
     foreign static read(vecs)
 
+    toString { "<%(this.x) %(this.y)>" }
+
     foreign x
     foreign y
     foreign copy()

@@ -33,14 +33,6 @@ where
     }
 }
 
-/// A generalization of WrenFrom that accepts a context C and can produce
-/// Self::Output
-pub trait Extractable<C> {
-    type Output;
-    const SCRATCH_SPACE: usize = 0;
-    fn extract(context: &mut C, vm: &VM, slot: SlotId, scratch_start: SlotId) -> Self::Output;
-}
-
 pub trait WrenFrom: Sized {
     /// VM reserves (1 + SCRATCH_SPACE) when converting
     ///
@@ -84,14 +76,6 @@ impl<T: WrenAtom> WrenTryFrom for Option<T> {
         Self: Sized,
     {
         Some(T::from_vm(vm, slot, scratch_start))
-    }
-}
-
-impl<T: WrenTryFrom, C> Extractable<C> for Option<T> {
-    type Output = Option<T>;
-    const SCRATCH_SPACE: usize = <T as WrenTryFrom>::SCRATCH_SPACE;
-    fn extract(_context: &mut C, vm: &VM, slot: SlotId, scratch_start: SlotId) -> Self::Output {
-        T::try_from_vm(vm, slot, scratch_start)
     }
 }
 
@@ -220,6 +204,7 @@ impl<T> WrenTo for Option<T>
 where
     T: WrenTo,
 {
+    const SCRATCH_SPACE: usize = T::SCRATCH_SPACE;
     fn to_vm(self, vm: &VM, slot: SlotId, scratch_start: SlotId) {
         match self {
             Some(t) => T::to_vm(t, vm, slot, scratch_start),
@@ -230,9 +215,9 @@ where
 
 impl<const N: usize, T> WrenTo for [T; N]
 where
-    T: WrenAtom,
+    T: WrenTo,
 {
-    const SCRATCH_SPACE: usize = 1;
+    const SCRATCH_SPACE: usize = 1 + T::SCRATCH_SPACE;
 
     fn to_vm(self, vm: &VM, slot: SlotId, scratch_start: SlotId) {
         vm.set_slot_new_list(slot);
@@ -245,9 +230,9 @@ where
 
 impl<const N: usize, T> WrenTryFrom for [T; N]
 where
-    T: WrenAtom,
+    T: WrenTryFrom,
 {
-    const SCRATCH_SPACE: usize = 1;
+    const SCRATCH_SPACE: usize = 1 + T::SCRATCH_SPACE;
 
     fn try_from_vm(vm: &VM, slot: SlotId, scratch_start: SlotId) -> Option<Self>
     where
@@ -265,7 +250,7 @@ where
         let mut items: [Option<T>; N] = std::array::from_fn(|_| None);
         for (i, item) in items.iter_mut().enumerate() {
             vm.get_list_element(slot, i as i32, scratch_start);
-            *item = T::from_vm(vm, scratch_start, scratch_start + 1);
+            *item = T::try_from_vm(vm, scratch_start, scratch_start + 1);
         }
         convert(items)
     }
@@ -273,15 +258,15 @@ where
 
 impl<T> WrenTo for Vec<T>
 where
-    T: WrenAtom,
+    T: WrenTo,
 {
-    const SCRATCH_SPACE: usize = 1;
+    const SCRATCH_SPACE: usize = 1 + T::SCRATCH_SPACE;
 
     fn to_vm(self, vm: &VM, slot: SlotId, scratch_start: SlotId) {
         vm.set_slot_new_list(slot);
         for (idx, i) in self.into_iter().enumerate() {
             i.to_vm(vm, scratch_start, scratch_start + 1);
-            vm.set_list_element(slot, idx as i32, scratch_start);
+            vm.insert_in_list(slot, idx as i32, scratch_start);
         }
     }
 }
@@ -290,7 +275,7 @@ impl<T> WrenTryFrom for Vec<T>
 where
     T: WrenTryFrom,
 {
-    const SCRATCH_SPACE: usize = 1;
+    const SCRATCH_SPACE: usize = 1 + T::SCRATCH_SPACE;
 
     fn try_from_vm(vm: &VM, slot: SlotId, scratch_start: SlotId) -> Option<Self>
     where
@@ -311,7 +296,7 @@ where
     K: WrenAtom,
     V: WrenAtom,
 {
-    const SCRATCH_SPACE: usize = 2;
+    const SCRATCH_SPACE: usize = 2 + K::SCRATCH_SPACE + V::SCRATCH_SPACE;
 
     fn to_vm(self, vm: &VM, slot: SlotId, scratch_start: SlotId) {
         vm.set_slot_new_map(slot);

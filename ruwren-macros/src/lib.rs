@@ -1575,6 +1575,7 @@ pub fn wren_module(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 },
                 quote! {
                     impl ruwren::foreign_v2::WrenTo for #source_ty {
+                        const SCRATCH_SPACE: usize = 1;
                         #[inline]
                         fn to_vm(self, vm: &ruwren::VM, slot: ruwren::SlotId, scratch_start: ruwren::SlotId) {
                             vm.set_slot_new_foreign_scratch::<_, _, #instance_ty>(
