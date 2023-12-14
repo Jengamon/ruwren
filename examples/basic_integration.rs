@@ -56,7 +56,6 @@ impl Vector {
     fn read(&self, vecs: Vec<Option<Vector>>) -> Option<Vec<Vector>> {
         dbg!(&vecs);
         vecs.into_iter().collect()
-        // todo!()
     }
 }
 
