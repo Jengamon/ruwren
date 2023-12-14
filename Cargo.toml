@@ -14,11 +14,11 @@ readme = "README.md"
 
 [workspace]
 members = [".", "ruwren-macros", "ruwren-sys", "ruwren_web_example"]
-package.version = "0.4.6"
+package.version = "0.4.7"
 
 [dependencies]
 ruwren-sys = { version = "0.4.5", path = "ruwren-sys" }
-ruwren-macros = { version = "0.4.6", path = "ruwren-macros", optional = true }
+ruwren-macros = { version = "0.4.7", path = "ruwren-macros", optional = true }
 
 [features]
 default = ["derive"]
