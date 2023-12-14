@@ -28,7 +28,10 @@ where
     fn to_vm(self, vm: &VM, slot: SlotId, scratch_start: SlotId) {
         match self {
             Ok(d) => D::to_vm(d, vm, slot, scratch_start),
-            Err(e) => E::to_vm(e, vm, slot, scratch_start + D::SCRATCH_SPACE),
+            Err(e) => {
+                E::to_vm(e, vm, slot, scratch_start + D::SCRATCH_SPACE);
+                vm.abort_fiber(slot);
+            }
         }
     }
 }
