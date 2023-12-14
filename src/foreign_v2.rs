@@ -204,19 +204,10 @@ impl<T> Class for T
 where
     T: ForeignItem + 'static,
 {
-    fn initialize(vm: &VM) -> Self
+    fn initialize(_vm: &VM) -> Self
     where
         Self: Sized,
     {
-        vm.use_class_mut::<Self, _, _>(|vm, cls| cls.map(|class| T::construct(class, vm).unwrap()))
-            .unwrap_or_else(|| {
-                let mut class = T::Class::allocate();
-                let inst = T::construct(&mut class, vm).unwrap();
-                vm.classes_v2.borrow_mut().insert(
-                    TypeId::of::<T>(),
-                    Rc::new(RefCell::new(Box::new(class) as Box<T::Class>)),
-                );
-                inst
-            })
+        unreachable!("This is only implemented for compatibility, and should never be called for v2 foreigns")
     }
 }
