@@ -75,7 +75,7 @@ where
 
 impl<T> Slottable<Option<T::Source>> for T
 where
-    T: Slottable<T::Source, Context = T::Class> + ForeignItem,
+    T: Slottable<T::Source, Context = T::Class> + ForeignItem + 'static,
     T::Class: 'static,
 {
     type Context = T::Class;
@@ -90,7 +90,11 @@ where
     fn get(
         ctx: &mut Self::Context, vm: &VM, slot: SlotId, scratch_start: SlotId,
     ) -> Option<Option<T::Source>> {
-        T::get_unknown_context(ctx, vm, slot, scratch_start)
+        T::get_unknown_context(ctx, vm, slot, scratch_start).or_else(|| {
+            vm.use_class_mut::<T, _, _>(|vm, cls| {
+                cls.map(|class| T::get(class, vm, slot, scratch_start))
+            })
+        })
     }
 }
 
