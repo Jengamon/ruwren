@@ -93,7 +93,7 @@ mod v2 {
 
         #[wren_impl(constructor)]
         fn constructor(&mut self, x: u32, y: u32) -> _ {
-            BonafideInstance { x, y }
+            Ok(BonafideInstance { x, y })
         }
 
         #[wren_impl(instance, getter)]

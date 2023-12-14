@@ -724,7 +724,7 @@ impl WrenImplValidFn {
         let body = self.gen_vm_fn_body(source_name);
         quote! {
             #[inline]
-            #vis fn #wrapper_fn_name(&mut self, vm: &ruwren::VM) -> #instance_name {
+            #vis fn #wrapper_fn_name(&mut self, vm: &ruwren::VM) -> Result<#instance_name, String> {
                 #body
                 ret
             }
@@ -741,7 +741,7 @@ impl WrenImplValidFn {
             #[inline(always)]
             fn #wrapper_fn_name(&mut self, vm: &ruwren::VM) {
                 #body
-                ruwren::foreign_v2::WrenTo::to_vm(ret, vm, 0, 1)
+                ruwren::foreign_v2::WrenTo::to_vm(ret, vm, 0, 1);
             }
         }
     }
@@ -769,7 +769,6 @@ impl WrenImplValidFn {
             quote! {
                 #vis unsafe extern "C" fn #native_name(vm: *mut ruwren::wren_sys::WrenVM) {
                     use std::panic::{set_hook, take_hook, AssertUnwindSafe};
-                    use ruwren::handle_panic as catch_unwind;
 
                     let conf = std::ptr::read_unaligned(
                         ruwren::wren_sys::wrenGetUserData(vm) as *mut ruwren::UserData
@@ -779,27 +778,13 @@ impl WrenImplValidFn {
                         .unwrap_or_else(|| panic!("Failed to access VM at {:p}", &conf.vm));
                     set_hook(Box::new(|_| {}));
                     let vm_borrow = AssertUnwindSafe(vm.borrow());
-                    match catch_unwind(|| {
+                    {
                         use ruwren::foreign_v2::V2Class;
                         vm_borrow.use_class_mut::<#instance_name, _, _>(|vm, cls| {
                             let class =
                                 cls.unwrap_or_else(|| panic!("Failed to resolve class for {}", #class_name::name()));
                             #class_name::#wrapper_fn_name(class, vm)
                         })
-                    }) {
-                        Ok(_) => (),
-                        Err(err) => {
-                            let err_string = if let Some(strg) = err.downcast_ref::<String>() {
-                                strg.clone()
-                            } else if let Some(strg) = err.downcast_ref::<&str>() {
-                                strg.to_string()
-                            } else {
-                                "Non-string panic message".into()
-                            };
-
-                            vm_borrow.set_slot_string(0, err_string);
-                            vm_borrow.abort_fiber(0);
-                        }
                     };
                     drop(take_hook());
                     std::ptr::write_unaligned(
@@ -812,7 +797,6 @@ impl WrenImplValidFn {
             quote! {
                 #vis unsafe extern "C" fn #native_name(vm: *mut ruwren::wren_sys::WrenVM) {
                     use std::panic::{set_hook, take_hook, AssertUnwindSafe};
-                    use ruwren::handle_panic as catch_unwind;
 
                     let conf = std::ptr::read_unaligned(
                         ruwren::wren_sys::wrenGetUserData(vm) as *mut ruwren::UserData
@@ -822,7 +806,7 @@ impl WrenImplValidFn {
                         .unwrap_or_else(|| panic!("Failed to access VM at {:p}", &conf.vm));
                     set_hook(Box::new(|_pi| {}));
                     let vm_borrow = AssertUnwindSafe(vm.borrow());
-                    match catch_unwind(|| {
+                    {
                         use ruwren::foreign_v2::V2Class;
                         vm_borrow.ensure_slots(1);
                         let inst = vm_borrow
@@ -838,20 +822,6 @@ impl WrenImplValidFn {
                             let mut wrapper: #wrapper_name = (class, inst).into();
                             wrapper.#wrapper_fn_name(vm)
                         })
-                    }) {
-                        Ok(_) => (),
-                        Err(err) => {
-                            let err_string = if let Some(strg) = err.downcast_ref::<String>() {
-                                strg.clone()
-                            } else if let Some(strg) = err.downcast_ref::<&str>() {
-                                strg.to_string()
-                            } else {
-                                "Non-string panic message".into()
-                            };
-
-                            vm_borrow.set_slot_string(0, err_string);
-                            vm_borrow.abort_fiber(0);
-                        }
                     };
                     drop(take_hook());
                     std::ptr::write_unaligned(
@@ -1142,15 +1112,19 @@ impl WrenObjectImpl {
                 Ok(mut constructor) => {
                     match constructor.func.sig.output {
                         ReturnType::Default => {
-                            constructor.func.sig.output = parse_quote! { -> #instance_name };
+                            constructor.func.sig.output =
+                                parse_quote! { -> Result<#instance_name, String> };
                         }
                         ReturnType::Type(_, ref ty) => {
                             if let Type::Infer(_) = **ty {
-                                constructor.func.sig.output = parse_quote! { -> #instance_name };
+                                constructor.func.sig.output =
+                                    parse_quote! { -> Result<#instance_name, String> };
                             }
                         }
                     }
-                    if constructor.func.sig.output == parse_quote! {-> #instance_name} {
+                    if constructor.func.sig.output
+                        == parse_quote! {-> Result<#instance_name, String>}
+                    {
                         if match constructor.receiver_ty {
                             Type::Reference(ref tr) => tr.elem == parse_quote! { #class_name },
                             Type::Path(ref tp) => tp.path == parse_quote! { #class_name },
@@ -1168,7 +1142,7 @@ impl WrenObjectImpl {
                     } else {
                         errors.push(format!(
                             "A constructor must return {}, but it returns {}",
-                            instance_name.into_token_stream(),
+                            quote! { Result<#instance_name, String> },
                             constructor.func.sig.output.into_token_stream(),
                         ));
                         None
@@ -1279,9 +1253,9 @@ pub fn wren_impl(
         }
         None => quote! {
             #[inline]
-            fn ___default_constructor(&self) -> #instance_ty {
+            fn ___default_constructor(&self) -> Result<#instance_ty, String> {
                 use std::default::Default;
-                #source_ty::default().into()
+                Ok(#source_ty::default().into())
             }
         },
     };
@@ -1412,7 +1386,7 @@ pub fn wren_impl(
                 Self: Sized,
             {
                 extern "C" fn _constructor(vm: *mut ruwren::wren_sys::WrenVM) {
-                    use ruwren::Class;
+                    use ruwren::foreign_v2::ForeignItem;
                     use std::panic::{set_hook, take_hook, AssertUnwindSafe};
                     use ruwren::handle_panic as catch_unwind;
                     unsafe {
@@ -1431,18 +1405,10 @@ pub fn wren_impl(
                         // Allocate a new object, and move it onto the heap
                         set_hook(Box::new(|_pi| {}));
                         let vm_borrow = AssertUnwindSafe(vm.borrow());
-                        let object = match catch_unwind(|| <#instance_ty as Class>::initialize(&*vm_borrow))
+                        let object = match #instance_ty::create(&*vm_borrow)
                         {
                             Ok(obj) => Some(obj),
-                            Err(err) => {
-                                let err_string = if let Some(strg) = err.downcast_ref::<String>() {
-                                    strg.clone()
-                                } else if let Some(strg) = err.downcast_ref::<&str>() {
-                                    strg.to_string()
-                                } else {
-                                    "Non-string panic message".into()
-                                };
-
+                            Err(err_string) => {
                                 vm_borrow.set_slot_string(0, err_string);
                                 vm_borrow.abort_fiber(0);
                                 None
@@ -1520,7 +1486,7 @@ pub fn wren_impl(
             type Source = #source_ty;
 
             #[inline]
-            fn construct(class: &mut Self::Class, vm: &ruwren::VM) -> Self {
+            fn construct(class: &mut Self::Class, vm: &ruwren::VM) -> Result<Self, String> {
                 #constructor_call
             }
         }

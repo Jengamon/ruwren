@@ -17,8 +17,8 @@ impl Foo {
     */
 
     #[wren_impl(constructor)]
-    fn constructor(&self, bar: f64) -> FooInstance {
-        FooInstance { bar }
+    fn constructor(&self, bar: f64) -> Result<FooInstance, String> {
+        Ok(FooInstance { bar })
     }
 
     #[wren_impl(instance)]

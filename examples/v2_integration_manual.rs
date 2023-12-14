@@ -67,8 +67,8 @@ impl FooClass {
         FooClass { sbar: 0 }
     }
 
-    fn construct(_class: &mut FooClass, bar: f64) -> FooInstance {
-        FooInstance { bar }
+    fn construct(_class: &mut FooClass, bar: f64) -> Result<FooInstance, String> {
+        Ok(FooInstance { bar })
     }
 
     fn sbar(class: &mut FooClass) -> i32 {
@@ -343,7 +343,7 @@ impl ForeignItem for FooInstance {
     type Class = FooClass;
     type Source = Foo;
 
-    fn construct(class: &mut Self::Class, vm: &ruwren::VM) -> Self {
+    fn construct(class: &mut Self::Class, vm: &ruwren::VM) -> Result<Self, String> {
         let arg0_calc = InputSlot::new::<_, f64>(1, 1);
         // let arg1_calc = InputSlot::object_next(1, &arg0_calc);
         vm.ensure_slots(arg0_calc.scratch_end());

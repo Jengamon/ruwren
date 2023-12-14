@@ -61,13 +61,16 @@ where
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn handle_panic<F, O: 'static>(_func: F) -> Result<O, Box<dyn Any + Send>>
+pub fn handle_panic<F, O: 'static>(func: F) -> Result<O, Box<dyn Any + Send>>
 where
-    F: FnOnce() -> O,
+    F: FnOnce() -> O + std::panic::UnwindSafe,
 {
     const TAGLINE: &str = "until unwinding panics are available on wasm (and catch_unwind works), this is not possible (yet)";
 
-    Err(Box::new(TAGLINE) as Box<dyn Any + Send>)
+    match std::panic::catch_unwind(func) {
+        Ok(o) => Ok(o),
+        _ => Err(Box::new(TAGLINE) as Box<dyn Any + Send>),
+    }
 }
 
 impl std::fmt::Display for VMError {

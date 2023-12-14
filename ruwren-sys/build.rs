@@ -8,7 +8,7 @@ fn main() {
     println!("cargo:rerun-if-changed=wrapper.h");
 
     let target = env::var("TARGET").unwrap();
-    if target == "wasm32-wasi" {
+    if target.starts_with("wasm32-wasi") {
         println!("cargo:rustc-link-lib=wasi-emulated-process-clocks");
     }
 

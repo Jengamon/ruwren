@@ -36,8 +36,8 @@ mod ext {
         // setter means that other than self, method accept 1 argument, and return must be ()
 
         #[wren_impl(constructor)]
-        fn construct(&mut self, bar: f64) -> FooInstance {
-            FooInstance { bar }
+        fn construct(&mut self, bar: f64) -> Result<FooInstance, String> {
+            Ok(FooInstance { bar })
         }
 
         // This is only given a FooClass

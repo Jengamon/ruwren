@@ -175,7 +175,25 @@ pub trait ForeignItem {
     type Class: V2Class + V2ClassAllocator;
     type Source: for<'a> From<(&'a Self::Class, &'a Self)>;
 
-    fn construct(class: &mut Self::Class, vm: &VM) -> Self;
+    fn construct(class: &mut Self::Class, vm: &VM) -> Result<Self, String>
+    where
+        Self: Sized;
+
+    fn create(vm: &VM) -> Result<Self, String>
+    where
+        Self: Sized + 'static,
+    {
+        vm.use_class_mut::<Self, _, _>(|vm, cls| cls.map(|class| Self::construct(class, vm)))
+            .unwrap_or_else(|| {
+                let mut class = Self::Class::allocate();
+                let inst = Self::construct(&mut class, vm);
+                vm.classes_v2.borrow_mut().insert(
+                    TypeId::of::<Self>(),
+                    Rc::new(RefCell::new(Box::new(class) as Box<Self::Class>)),
+                );
+                inst
+            })
+    }
 }
 
 pub trait V2ClassAllocator: V2Class {
@@ -190,10 +208,10 @@ where
     where
         Self: Sized,
     {
-        vm.use_class_mut::<Self, _, _>(|vm, cls| cls.map(|class| T::construct(class, vm)))
+        vm.use_class_mut::<Self, _, _>(|vm, cls| cls.map(|class| T::construct(class, vm).unwrap()))
             .unwrap_or_else(|| {
                 let mut class = T::Class::allocate();
-                let inst = T::construct(&mut class, vm);
+                let inst = T::construct(&mut class, vm).unwrap();
                 vm.classes_v2.borrow_mut().insert(
                     TypeId::of::<T>(),
                     Rc::new(RefCell::new(Box::new(class) as Box<T::Class>)),
