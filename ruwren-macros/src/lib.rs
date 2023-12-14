@@ -555,7 +555,7 @@ impl WrenImplValidFn {
     }
 
     /// Generate the body for [`Self::gen_vm_fn()`] and [`Self::gen_vm_fn_constructor()`]
-    fn gen_vm_fn_body(&self, source_name: &syn::Ident) -> proc_macro2::TokenStream {
+    fn gen_vm_fn_body(&self, source_name: &syn::Ident, constructor_mode: bool) -> proc_macro2::TokenStream {
         let (normal_extract, normal_arg): (Vec<_>, Vec<_>) = self
             .normal_params
             .iter()
@@ -567,14 +567,24 @@ impl WrenImplValidFn {
                 let arity = self.arity();
                 let call = if *idx == 0 {
                     quote! {
-                        new::<_, #ty>(#slot_idx, #arity)
+                        new::<#ty>(#slot_idx, #arity)
                     }
                 } else {
                     let prev_arg_slot_name =
                         syn::Ident::new(&format!("arg{}_calc", idx - 1), Span::call_site());
 
                     quote! {
-                        next::<_, #ty>(#slot_idx, &#prev_arg_slot_name)
+                        next::<#ty>(#slot_idx, &#prev_arg_slot_name)
+                    }
+                };
+                let failure = if constructor_mode {
+                    quote! {
+                        return Err(format!("failed to get value of type {} for slot {}", std::any::type_name::<#ty>(), #slot_idx));
+                    }
+                } else {
+                    quote! {
+                        ruwren::foreign_v2::WrenTo::to_vm(format!("failed to get value of type {} for slot {}", std::any::type_name::<#ty>(), #slot_idx), vm, 0, 1);
+                        return
                     }
                 };
                 (
@@ -582,7 +592,9 @@ impl WrenImplValidFn {
                         let #arg_slot_name = ruwren::foreign_v2::InputSlot::#call
                     }),
                     quote! {
-                        let #arg_name: #ty = ruwren::foreign_v2::get_slot_value(vm, &#arg_slot_name, #arity)
+                        let Some(#arg_name): Option<#ty> = ruwren::foreign_v2::get_slot_value(vm, &#arg_slot_name, #arity) else {
+                            #failure
+                        }
                     },
                 )
             })
@@ -625,29 +637,28 @@ impl WrenImplValidFn {
             } else {
                 quote! {self.class}
             };
+            let failure = if constructor_mode {
+                quote! {
+                    return Err(format!("failed to get value of type {} for slot {}", std::any::type_name::<#ty>(), #slot_idx));
+                }
+            } else {
+                quote! {
+                    ruwren::foreign_v2::WrenTo::to_vm(format!("failed to get value of type {} for slot {}", std::any::type_name::<#ty>(), #slot_idx), vm, 0, 1);
+                    return
+                }
+            };
             (
                 (idx, quote! {
                     let #arg_slot_name = ruwren::foreign_v2::InputSlot::#call
                 }),
                 quote! {
-                    let #arg_name: #ty = match ruwren::foreign_v2::get_slot_object::<#source_type, _>(vm, &#arg_slot_name, #arity, #receiver) {
-                        Some(v) => v,
-                        None => todo!(),
+                    let Some(#arg_name): Option<#ty> = ruwren::foreign_v2::get_slot_object::<#source_type, _>(vm, &#arg_slot_name, #arity, #receiver) else {
+                        #failure
                     }
                 },
             )
         })
         .unzip();
-
-        let last_arg_check = if self.arity() > 0 {
-            let last_arg =
-                syn::Ident::new(&format!("arg{}_calc", self.arity() - 1), Span::call_site());
-            quote! {
-                vm.ensure_slots(#last_arg.scratch_end())
-            }
-        } else {
-            quote! {}
-        };
 
         let call = {
             let mut call_args: Vec<_> = self
@@ -702,7 +713,6 @@ impl WrenImplValidFn {
             #(
                 #extractors
             );*;
-            #last_arg_check;
 
             #(
                 #normal_arg
@@ -721,7 +731,7 @@ impl WrenImplValidFn {
             syn::Ident::new(&format!("vm_{}", self.base_name()), Span::call_site());
         let instance_name = generate_instance_type_name(source_name);
         let vis = &self.func.vis;
-        let body = self.gen_vm_fn_body(source_name);
+        let body = self.gen_vm_fn_body(source_name, true);
         quote! {
             #[inline]
             #vis fn #wrapper_fn_name(&mut self, vm: &ruwren::VM) -> Result<#instance_name, String> {
@@ -736,7 +746,7 @@ impl WrenImplValidFn {
     fn gen_vm_fn(&self, source_name: &syn::Ident) -> proc_macro2::TokenStream {
         let wrapper_fn_name =
             syn::Ident::new(&format!("vm_{}", self.base_name()), Span::call_site());
-        let body = self.gen_vm_fn_body(source_name);
+        let body = self.gen_vm_fn_body(source_name, false);
         quote_spanned! {self.func.span()=>
             #[inline(always)]
             fn #wrapper_fn_name(&mut self, vm: &ruwren::VM) {
@@ -1390,45 +1400,43 @@ pub fn wren_impl(
                     use std::panic::{set_hook, take_hook, AssertUnwindSafe};
                     use ruwren::handle_panic as catch_unwind;
                     unsafe {
-                        let conf = std::ptr::read_unaligned(
-                            ruwren::wren_sys::wrenGetUserData(vm) as *mut ruwren::UserData
-                        );
+                        let ud = ruwren::wren_sys::wrenGetUserData(vm);
+                        let conf = std::ptr::read_unaligned(ud as *mut ruwren::UserData);
                         let ovm = vm;
                         let vm = std::rc::Weak::upgrade(&conf.vm)
                             .unwrap_or_else(|| panic!("Failed to access VM at {:p}", &conf.vm));
-                        let wptr = ruwren::wren_sys::wrenSetSlotNewForeign(
-                            vm.borrow().vm,
-                            0,
-                            0,
-                            std::mem::size_of::<ruwren::ForeignObject<#instance_ty>>()
-                        );
                         // Allocate a new object, and move it onto the heap
                         set_hook(Box::new(|_pi| {}));
                         let vm_borrow = AssertUnwindSafe(vm.borrow());
-                        let object = match #instance_ty::create(&*vm_borrow)
+                        match #instance_ty::create(&*vm_borrow)
                         {
-                            Ok(obj) => Some(obj),
+                            Ok(object) => {
+                                let wptr = ruwren::wren_sys::wrenSetSlotNewForeign(
+                                    vm.borrow().vm,
+                                    0,
+                                    0,
+                                    std::mem::size_of::<ruwren::ForeignObject<#instance_ty>>()
+                                );
+
+                                std::ptr::write(
+                                    wptr as *mut _,
+                                    ruwren::ForeignObject {
+                                        object: Box::into_raw(Box::new(object)),
+                                        type_id: std::any::TypeId::of::<#instance_ty>(),
+                                    },
+                                );
+                            },
                             Err(err_string) => {
                                 vm_borrow.set_slot_string(0, err_string);
                                 vm_borrow.abort_fiber(0);
-                                None
                             }
                         };
                         drop(take_hook());
-                        // Copy the object pointer if we were successful
-                        if let Some(object) = object {
-                            std::ptr::write(
-                                wptr as *mut _,
-                                ruwren::ForeignObject {
-                                    object: Box::into_raw(Box::new(object)),
-                                    type_id: std::any::TypeId::of::<#instance_ty>(),
-                                },
-                            );
-                        }
                         std::ptr::write_unaligned(
-                            ruwren::wren_sys::wrenGetUserData(ovm) as *mut ruwren::UserData,
-                            conf,
+                            ud as *mut ruwren::UserData,
+                            conf
                         );
+                        ruwren::wren_sys::wrenSetUserData(ovm, ud);
                     }
                 }
                 _constructor

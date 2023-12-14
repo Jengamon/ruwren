@@ -68,17 +68,11 @@ impl<T: WrenAtom> WrenTryFrom for T {
     where
         Self: Sized,
     {
+        if slot >= vm.get_slot_count() {
+            return None
+        }
+        
         <Self as WrenAtom>::from_vm(vm, slot, scratch_start)
-    }
-}
-
-impl<T: WrenAtom> WrenTryFrom for Option<T> {
-    const SCRATCH_SPACE: usize = <T as WrenAtom>::SCRATCH_SPACE;
-    fn try_from_vm(vm: &VM, slot: SlotId, scratch_start: SlotId) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        Some(T::from_vm(vm, slot, scratch_start))
     }
 }
 
@@ -99,7 +93,11 @@ macro_rules! wren_convert {
                     }
 
                     fn from_vm(vm: &VM, slot: SlotId, _scratch_start: SlotId) -> Option<Self> {
-                        vm.get_slot_double(slot).map(|i| i as $ty)
+                        if vm.get_slot_type(slot) == SlotType::Num {
+                            vm.get_slot_double(slot).map(|i| i as $ty)
+                        } else {
+                            None
+                        }
                     }
                 }
             )+
@@ -129,7 +127,11 @@ impl WrenAtom for bool {
     where
         Self: Sized,
     {
-        vm.get_slot_bool(slot)
+        if vm.get_slot_type(slot) == SlotType::Bool {
+            vm.get_slot_bool(slot)
+        } else {
+            None
+        }
     }
 }
 
@@ -168,7 +170,11 @@ impl WrenAtom for WrenString {
     where
         Self: Sized,
     {
-        vm.get_slot_bytes(slot).map(WrenString)
+        if vm.get_slot_type(slot) == SlotType::String {
+            vm.get_slot_bytes(slot).map(WrenString)
+        } else {
+            None
+        }
     }
 }
 
@@ -241,6 +247,10 @@ where
     where
         Self: Sized,
     {
+        if vm.get_slot_type(slot) != SlotType::List {
+            return None;
+        }
+
         // Taken from https://stackoverflow.com/questions/75310077/array-of-optiont-to-option-array
         fn convert<T, const N: usize>(arr: [Option<T>; N]) -> Option<[T; N]> {
             let arr = arr.into_iter().collect::<Option<Vec<T>>>()?;
@@ -284,6 +294,10 @@ where
     where
         Self: Sized,
     {
+        if vm.get_slot_type(slot) != SlotType::List {
+            return None;
+        }
+
         let mut items = vec![];
         let count = vm.get_list_count(slot)?;
         for i in 0..count {

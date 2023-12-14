@@ -1,7 +1,7 @@
 mod convert;
 
 use std::{
-    any::{type_name, Any, TypeId},
+    any::{Any, TypeId},
     cell::RefCell,
     rc::Rc,
 };
@@ -44,6 +44,28 @@ where
         Self: Sized,
     {
         T::try_from_vm(vm, slot, scratch_start)
+    }
+}
+
+impl<T> Slottable<Option<T>> for Option<T>
+where
+    T: WrenTryFrom,
+{
+    type Context = ();
+
+    fn scratch_size() -> usize {
+        T::SCRATCH_SPACE
+    }
+
+    fn get(_ctx: &mut (), vm: &VM, slot: SlotId, scratch_start: SlotId) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if slot >= vm.get_slot_count() {
+            return None
+        }
+
+        Some(T::try_from_vm(vm, slot, scratch_start))
     }
 }
 
@@ -106,19 +128,19 @@ pub struct InputSlot {
 }
 
 impl InputSlot {
-    pub fn new<O, T: Slottable<O>>(slot: SlotId, arity: usize) -> Self {
+    pub fn new<O: Slottable<O>>(slot: SlotId, arity: usize) -> Self {
         InputSlot {
             slot,
             scratch_start: arity + 1,
-            scratch_size: T::scratch_size(),
+            scratch_size: O::scratch_size(),
         }
     }
 
-    pub fn next<O, T: Slottable<O>>(slot: SlotId, prev: &InputSlot) -> Self {
+    pub fn next<O: Slottable<O>>(slot: SlotId, prev: &InputSlot) -> Self {
         InputSlot {
             slot,
             scratch_start: prev.scratch_start + prev.scratch_size,
-            scratch_size: T::scratch_size(),
+            scratch_size: O::scratch_size(),
         }
     }
 
@@ -143,12 +165,11 @@ impl InputSlot {
     }
 }
 
-pub fn get_slot_value<O>(vm: &VM, slot: &InputSlot, scratch_offset: usize) -> O
+pub fn get_slot_value<O>(vm: &VM, slot: &InputSlot, scratch_offset: usize) -> Option<O>
 where
     O: Slottable<O, Context = ()>,
 {
     O::get(&mut (), vm, slot.slot, scratch_offset + slot.scratch_start)
-        .unwrap_or_else(|| panic! {"slot {} cannot be type {}", slot.slot, type_name::<O>()})
 }
 
 pub fn get_slot_object<T, O>(
