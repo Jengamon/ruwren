@@ -21,7 +21,8 @@ macro_rules! create_module {
     ) => {
         $(
             mod $md {
-                use std::panic::{take_hook, set_hook, catch_unwind, AssertUnwindSafe};
+                use std::panic::{take_hook, set_hook, AssertUnwindSafe};
+                use $crate::handle_panic as catch_unwind;
 
                 pub(in super) extern "C" fn _constructor(vm: *mut $crate::wren_sys::WrenVM) {
                     use $crate::Class;
@@ -134,7 +135,8 @@ macro_rules! create_module {
 
     (@fn static $name:ty => $s:ident) => {
         pub(in super) unsafe extern "C" fn $s(vm: *mut $crate::wren_sys::WrenVM) {
-            use std::panic::{take_hook, set_hook, catch_unwind, AssertUnwindSafe};
+            use std::panic::{take_hook, set_hook, AssertUnwindSafe};
+            use $crate::handle_panic as catch_unwind;
 
             let conf = std::ptr::read_unaligned($crate::wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
             let ovm = vm;
@@ -163,7 +165,8 @@ macro_rules! create_module {
 
     (@fn instance $name:ty => $inf:ident) => {
         pub(in super) unsafe extern "C" fn $inf(vm: *mut $crate::wren_sys::WrenVM) {
-            use std::panic::{take_hook, set_hook, catch_unwind, AssertUnwindSafe};
+            use std::panic::{take_hook, set_hook, AssertUnwindSafe};
+            use $crate::handle_panic as catch_unwind;
 
             let conf = std::ptr::read_unaligned($crate::wren_sys::wrenGetUserData(vm) as *mut $crate::UserData);
             let ovm = vm;

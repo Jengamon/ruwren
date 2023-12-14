@@ -52,6 +52,24 @@ pub struct VMStackFrameError {
     pub function: String,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+pub fn handle_panic<F, O>(func: F) -> Result<O, Box<dyn Any + Send>>
+where
+    F: FnOnce() -> O + std::panic::UnwindSafe,
+{
+    std::panic::catch_unwind(func)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn handle_panic<F, O: 'static>(_func: F) -> Result<O, Box<dyn Any + Send>>
+where
+    F: FnOnce() -> O,
+{
+    const TAGLINE: &str = "until unwinding panics are available on wasm (and catch_unwind works), this is not possible (yet)";
+
+    Err(Box::new(TAGLINE) as Box<dyn Any + Send>)
+}
+
 impl std::fmt::Display for VMError {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {

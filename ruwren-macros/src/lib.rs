@@ -768,7 +768,8 @@ impl WrenImplValidFn {
         let native_wrapper = if self.is_static {
             quote! {
                 #vis unsafe extern "C" fn #native_name(vm: *mut ruwren::wren_sys::WrenVM) {
-                    use std::panic::{catch_unwind, set_hook, take_hook, AssertUnwindSafe};
+                    use std::panic::{set_hook, take_hook, AssertUnwindSafe};
+                    use ruwren::handle_panic as catch_unwind;
 
                     let conf = std::ptr::read_unaligned(
                         ruwren::wren_sys::wrenGetUserData(vm) as *mut ruwren::UserData
@@ -810,7 +811,8 @@ impl WrenImplValidFn {
         } else {
             quote! {
                 #vis unsafe extern "C" fn #native_name(vm: *mut ruwren::wren_sys::WrenVM) {
-                    use std::panic::{catch_unwind, set_hook, take_hook, AssertUnwindSafe};
+                    use std::panic::{set_hook, take_hook, AssertUnwindSafe};
+                    use ruwren::handle_panic as catch_unwind;
 
                     let conf = std::ptr::read_unaligned(
                         ruwren::wren_sys::wrenGetUserData(vm) as *mut ruwren::UserData
@@ -1411,7 +1413,8 @@ pub fn wren_impl(
             {
                 extern "C" fn _constructor(vm: *mut ruwren::wren_sys::WrenVM) {
                     use ruwren::Class;
-                    use std::panic::{catch_unwind, set_hook, take_hook, AssertUnwindSafe};
+                    use std::panic::{set_hook, take_hook, AssertUnwindSafe};
+                    use ruwren::handle_panic as catch_unwind;
                     unsafe {
                         let conf = std::ptr::read_unaligned(
                             ruwren::wren_sys::wrenGetUserData(vm) as *mut ruwren::UserData

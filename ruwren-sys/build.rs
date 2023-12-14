@@ -5,7 +5,12 @@ use std::path::PathBuf;
 
 fn main() {
     // Tell cargo to invalidate the built crate whenever the wrapper changes
-    // println!("cargo:rerun-if-changed=wrapper.h");
+    println!("cargo:rerun-if-changed=wrapper.h");
+
+    let target = env::var("TARGET").unwrap();
+    if target == "wasm32-wasi" {
+        println!("cargo:rustc-link-lib=wasi-emulated-process-clocks");
+    }
 
     cc::Build::new()
         .files(
@@ -25,22 +30,19 @@ fn main() {
         .warnings(false) // We don't control the source...
         .compile("wren");
 
-    let target = env::var("TARGET").unwrap();
-
     let bindings = bindgen::Builder::default()
         .detect_include_paths(true)
         .header("wrapper.h")
         .allowlist_var("WREN.*")
         .allowlist_type("Wren.*")
         .allowlist_function("wren.*")
-        .clang_arg(format!("--target={target}"))
         .clang_arg("-Isrc")
         .clang_arg("-Iinclude")
         .clang_arg("-Ioptional")
         .parse_callbacks(Box::<bindgen::CargoCallbacks>::default());
     // bindings
-    //     .dump_preprocessed_input()
-    //     .expect("input should be dumpable");
+    // .dump_preprocessed_input()
+    // .expect("input should be dumpable");
     let bindings = bindings.generate().expect("Unable to generate bindings.");
 
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
