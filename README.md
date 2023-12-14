@@ -204,3 +204,15 @@ fn main() {
     // This should print "9".
 }
 ```
+
+## About WASM Compilation
+
+It technically works as long as you target WASI, and have a WASI SDK setup somewhere.
+look at the justfile or example-wasi.nu for the environment variables to set to get it running. There is one big caveat tho:
+
+WASM (even with WASI) is a panic=abort platform, so catch_unwind does nothing,
+and panics are unhandleable.
+
+This means that some idioms of the v1 foreign API (namely `get_slot_checked!`) are not very good on the platform. Basically, anything that panics doesn't work well.
+
+With a minimal change the the v2 foreign API (namely, having the constructor be fallible) means that v2 should work relatively unchanged on web, and v1 is *usable*, it just shouldn't trigger a panic, or the wasm runtime will flip the table.
