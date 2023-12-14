@@ -241,26 +241,6 @@ pub fn type_name_of<T>(_: &T) -> &'static str {
     any::type_name::<T>()
 }
 
-/// Sends a foreign object `$obj` as an object of `$class` in module `$modl` to slot `$slot`
-#[macro_export]
-macro_rules! send_foreign {
-    ($vm:expr, $modl:expr, $class:expr, $obj:expr => $slot:expr) => {{
-        let obj_name = $crate::type_name_of(&$obj);
-        match $vm.set_slot_new_foreign($modl, $class, $obj, $slot) {
-            Err(e) => panic!(
-                "rust error [{}:{}]: Could not send type {:?} as [{}] {}: {}",
-                file!(),
-                line!(),
-                obj_name,
-                $modl,
-                $class,
-                e
-            ),
-            Ok(rf) => rf,
-        }
-    }};
-}
-
 /// Enables one to enable module loading for Wren
 pub trait ModuleScriptLoader {
     /// Takes a desired module `name`
