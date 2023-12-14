@@ -1,5 +1,9 @@
 use ruwren::{BasicFileLoader, VMConfig};
 
+// To run this on wasmtime, it must be given permission to access the script directory
+// for wasmtime, pass in --dir=examples/relative_imports (if running from the root directory)
+// using the just file, this would be just wasm-example relative_imports --dir=examples/relative_imports
+
 fn main() {
     let script_loader = BasicFileLoader::new().base_dir("examples/relative_imports");
 
