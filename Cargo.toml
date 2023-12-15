@@ -14,7 +14,7 @@ readme = "README.md"
 
 [workspace]
 members = [".", "ruwren-macros", "ruwren-sys", "ruwren_web_example"]
-package.version = "0.4.9"
+package.version = "0.4.10"
 
 [dependencies]
 ruwren-sys = { version = "0.4.5", path = "ruwren-sys" }
