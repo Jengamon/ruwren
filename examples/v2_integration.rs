@@ -39,6 +39,12 @@ mod ext {
         // taking in a T means that if Wren passes in *any* other type, the runtime will flip out,
         // prefer taking in Option<T> and handling the None case (the case when Wren tried to give
         // you a data of a type that wasn't the one you declared)
+        //
+        // FIXED: WASM will no longer flip out or do weird things when something of the
+        // wrong type is passed in, it will simply error out on the Wren side.
+        //
+        // Passing in *nothing* (having a mismatch in arity) will also safely error.
+        // Basically, it's all fixed...
 
         #[wren_impl(constructor)]
         fn construct(&mut self, bar: f64) -> Result<FooInstance, String> {
