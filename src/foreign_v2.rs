@@ -62,7 +62,7 @@ where
         Self: Sized,
     {
         if slot >= vm.get_slot_count() {
-            return None
+            return None;
         }
 
         Some(T::try_from_vm(vm, slot, scratch_start))

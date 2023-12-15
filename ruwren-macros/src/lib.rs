@@ -555,7 +555,9 @@ impl WrenImplValidFn {
     }
 
     /// Generate the body for [`Self::gen_vm_fn()`] and [`Self::gen_vm_fn_constructor()`]
-    fn gen_vm_fn_body(&self, source_name: &syn::Ident, constructor_mode: bool) -> proc_macro2::TokenStream {
+    fn gen_vm_fn_body(
+        &self, source_name: &syn::Ident, constructor_mode: bool,
+    ) -> proc_macro2::TokenStream {
         let (normal_extract, normal_arg): (Vec<_>, Vec<_>) = self
             .normal_params
             .iter()

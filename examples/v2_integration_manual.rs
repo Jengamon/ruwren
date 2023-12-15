@@ -139,7 +139,7 @@ impl FooClass {
 
         let arg0 = match get_slot_value(vm, &arg0_calc, 2) {
             Some(v) => v,
-            None => todo!()
+            None => todo!(),
         };
         let arg1 = get_slot_object::<FooInstance, _>(vm, &arg1_calc, 2, class);
         let ret = FooClass::static_fn(

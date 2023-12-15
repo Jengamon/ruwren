@@ -69,9 +69,9 @@ impl<T: WrenAtom> WrenTryFrom for T {
         Self: Sized,
     {
         if slot >= vm.get_slot_count() {
-            return None
+            return None;
         }
-        
+
         <Self as WrenAtom>::from_vm(vm, slot, scratch_start)
     }
 }
@@ -247,7 +247,7 @@ where
     where
         Self: Sized,
     {
-        if vm.get_slot_type(slot) != SlotType::List {
+        if slot <= vm.get_slot_count() || vm.get_slot_type(slot) != SlotType::List {
             return None;
         }
 
@@ -294,7 +294,7 @@ where
     where
         Self: Sized,
     {
-        if vm.get_slot_type(slot) != SlotType::List {
+        if slot <= vm.get_slot_count() || vm.get_slot_type(slot) != SlotType::List {
             return None;
         }
 
