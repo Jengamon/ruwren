@@ -3,7 +3,7 @@ name = "ruwren"
 version = { workspace = true }
 authors = ["Jengamon <bob.hostern@gmail.com>"]
 edition = "2021"
-license = "MIT OR Apache-2.0"
+license-file = "LICENSE"
 repository = "https://github.com/Jengamon/ruwren"
 homepage = "http://wren.io"
 keywords = ["wren", "scripting", "embed", "ruwren"]
