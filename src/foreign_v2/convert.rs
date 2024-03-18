@@ -145,6 +145,7 @@ impl WrenTo for String {
 
 wren_convert!(numeric i8,i16,i32,i64,u8,u16,u32,u64,f32,f64);
 
+#[derive(Debug)]
 pub struct WrenString(Vec<u8>);
 
 impl WrenString {
@@ -178,6 +179,7 @@ impl WrenAtom for WrenString {
     }
 }
 
+#[derive(Debug)]
 pub enum WrenValue {
     Null,
     Number(f64),
