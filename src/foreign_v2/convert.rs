@@ -76,6 +76,12 @@ impl<T: WrenAtom> WrenTryFrom for T {
     }
 }
 
+impl<T: WrenTryFrom> WrenTryFrom for Option<T> {
+    fn try_from_vm(vm: &VM, slot: SlotId, scratch_start: SlotId) -> Option<Self> {
+        T::try_from_vm(vm, slot, scratch_start).map(Some)
+    }
+}
+
 impl<T: WrenTryFrom> WrenFrom for T {
     const SCRATCH_SPACE: usize = <T as WrenTryFrom>::SCRATCH_SPACE;
     fn from_vm(vm: &VM, slot: SlotId, scratch_start: SlotId) -> Self {

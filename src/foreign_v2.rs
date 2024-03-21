@@ -47,28 +47,6 @@ where
     }
 }
 
-impl<T> Slottable<Option<T>> for Option<T>
-where
-    T: WrenTryFrom,
-{
-    type Context = ();
-
-    fn scratch_size() -> usize {
-        T::SCRATCH_SPACE
-    }
-
-    fn get(_ctx: &mut (), vm: &VM, slot: SlotId, scratch_start: SlotId) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if slot >= vm.get_slot_count() {
-            return None;
-        }
-
-        Some(T::try_from_vm(vm, slot, scratch_start))
-    }
-}
-
 impl<T> Slottable<Vec<Option<T::Source>>> for T
 where
     T: Slottable<T::Source, Context = T::Class> + ForeignItem,
