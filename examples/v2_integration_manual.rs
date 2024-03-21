@@ -1,7 +1,6 @@
 use ruwren::{
     foreign_v2::{
-        get_slot_object, get_slot_value, ForeignItem, InputSlot, Slottable, V2Class,
-        V2ClassAllocator, WrenTo,
+        get_slot_object, get_slot_value, ForeignItem, InputSlot, Slottable, V2Class, WrenTo,
     },
     ClassObject, ModuleLibrary, VMConfig, VM,
 };
@@ -334,9 +333,7 @@ impl V2Class for FooClass {
     fn name() -> &'static str {
         "Foo"
     }
-}
 
-impl V2ClassAllocator for FooClass {
     fn allocate() -> Self {
         FooClass::new()
     }

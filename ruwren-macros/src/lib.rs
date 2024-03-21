@@ -1483,9 +1483,7 @@ pub fn wren_impl(
             fn name() -> &'static str {
                 stringify!(#source_ty)
             }
-        }
 
-        impl ruwren::foreign_v2::V2ClassAllocator for #class_ty {
             #[inline]
             fn allocate() -> Self {
                 #allocator_call

@@ -190,10 +190,11 @@ where
 
 pub trait V2Class {
     fn name() -> &'static str;
+    fn allocate() -> Self;
 }
 
 pub trait ForeignItem {
-    type Class: V2Class + V2ClassAllocator;
+    type Class: V2Class;
     type Source: for<'a> From<(&'a Self::Class, &'a Self)>;
 
     fn construct(class: &mut Self::Class, vm: &VM) -> Result<Self, String>
@@ -215,10 +216,6 @@ pub trait ForeignItem {
                 inst
             })
     }
-}
-
-pub trait V2ClassAllocator: V2Class {
-    fn allocate() -> Self;
 }
 
 impl<T> Class for T

@@ -937,7 +937,7 @@ impl VM {
         let (update, class) = match self.classes_v2.borrow_mut().get_mut(&TypeId::of::<T>()) {
             Some(cls) => (false, cls.clone()),
             None => {
-                use crate::foreign_v2::V2ClassAllocator;
+                use crate::foreign_v2::V2Class;
 
                 // Initialize the class (should be done in case the type is *not* constructable)
                 let class = Rc::new(RefCell::new(Box::new(T::Class::allocate()) as Box<dyn Any>));
@@ -964,7 +964,7 @@ impl VM {
         let (update, class) = match self.classes_v2.borrow_mut().get_mut(&TypeId::of::<T>()) {
             Some(cls) => (false, cls.clone()),
             None => {
-                use crate::foreign_v2::V2ClassAllocator;
+                use crate::foreign_v2::V2Class;
 
                 // Initialize the class (should be done in case the type is *not* constructable)
                 let class = Rc::new(RefCell::new(Box::new(T::Class::allocate()) as Box<dyn Any>));
