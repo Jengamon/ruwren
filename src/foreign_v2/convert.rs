@@ -249,7 +249,10 @@ where
     where
         Self: Sized,
     {
-        if slot >= vm.get_slot_count() || vm.get_slot_type(slot) != SlotType::List {
+        if slot >= vm.get_slot_count()
+            || vm.get_slot_type(slot) != SlotType::List
+            || vm.get_list_count(slot) < Some(N)
+        {
             return None;
         }
 
