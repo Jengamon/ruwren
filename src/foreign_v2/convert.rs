@@ -249,17 +249,14 @@ where
     where
         Self: Sized,
     {
-        if slot <= vm.get_slot_count() || vm.get_slot_type(slot) != SlotType::List {
+        if slot >= vm.get_slot_count() || vm.get_slot_type(slot) != SlotType::List {
             return None;
         }
 
         // Taken from https://stackoverflow.com/questions/75310077/array-of-optiont-to-option-array
         fn convert<T, const N: usize>(arr: [Option<T>; N]) -> Option<[T; N]> {
             let arr = arr.into_iter().collect::<Option<Vec<T>>>()?;
-            Some(
-                arr.try_into()
-                    .unwrap_or_else(|_| panic!("the array is of size {N}")),
-            )
+            TryInto::<[T; N]>::try_into(arr).ok()
         }
 
         let mut items: [Option<T>; N] = std::array::from_fn(|_| None);
@@ -296,7 +293,7 @@ where
     where
         Self: Sized,
     {
-        if slot <= vm.get_slot_count() || vm.get_slot_type(slot) != SlotType::List {
+        if slot >= vm.get_slot_count() || vm.get_slot_type(slot) != SlotType::List {
             return None;
         }
 

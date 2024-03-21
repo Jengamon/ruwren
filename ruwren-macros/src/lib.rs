@@ -586,6 +586,7 @@ impl WrenImplValidFn {
                 } else {
                     quote! {
                         ruwren::foreign_v2::WrenTo::to_vm(format!("failed to get value of type {} for slot {}", std::any::type_name::<#ty>(), #slot_idx), vm, 0, 1);
+                        vm.abort_fiber(0);
                         return
                     }
                 };
