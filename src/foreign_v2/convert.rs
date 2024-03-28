@@ -14,8 +14,9 @@ pub trait WrenTo {
     /// VM reserves (1 + SCRATCH_SPACE) when converting
     ///
     /// For example, if ScratchSpace == 1, then conversion functions
-    /// can use `slot` and `scratch_slot` in its implementation
+    /// can use `slot` and `scratch_start` in its implementation
     const SCRATCH_SPACE: usize = 0;
+    /// Put a Wren object representing this instance into slot `slot`
     fn to_vm(self, vm: &VM, slot: SlotId, scratch_start: SlotId);
 }
 
@@ -40,9 +41,11 @@ pub trait WrenFrom: Sized {
     /// VM reserves (1 + SCRATCH_SPACE) when converting
     ///
     /// For example, if ScratchSpace == 1, then conversion functions
-    /// can use `slot` and `scratch_slot` in its implementation
+    /// can use `slot` and `scratch_start` in its implementation
     const SCRATCH_SPACE: usize = 0;
     /// Note: This should be *infallible*, so it's rare to have this directly implemented
+    ///
+    /// Return a valid instance of this type from the slot `slot`
     fn from_vm(vm: &VM, slot: SlotId, scratch_start: SlotId) -> Self;
 }
 
@@ -50,8 +53,9 @@ pub trait WrenTryFrom: Sized {
     /// VM reserves (1 + SCRATCH_SPACE) when converting
     ///
     /// For example, if ScratchSpace == 1, then conversion functions
-    /// can use `slot` and `slot + 1` in its implementation
+    /// can use `slot` and `scratch_start` in its implementation
     const SCRATCH_SPACE: usize = 0;
+    /// Try to return a valid instance of this type from slot `slot`
     fn try_from_vm(vm: &VM, slot: SlotId, scratch_start: SlotId) -> Option<Self>;
 }
 
