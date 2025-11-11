@@ -456,7 +456,7 @@ impl VMWrapper {
     }
 
     /// Gets a handle to a value in a certain slot
-    pub fn get_slot_handle(&self, slot: SlotId) -> Rc<Handle> {
+    pub fn get_slot_handle(&self, slot: SlotId) -> Rc<Handle<'_>> {
         Rc::new(Handle {
             handle: unsafe { wren_sys::wrenGetSlotHandle(self.0.borrow().vm, slot as raw::c_int) },
             wvm: self.0.borrow().vm,
@@ -472,7 +472,7 @@ impl VMWrapper {
     }
 
     /// Create a callable handle, that can be used with [`call_handle`](VMWrapper::call_handle)
-    pub fn make_call_handle(&self, signature: FunctionSignature) -> Rc<FunctionHandle> {
+    pub fn make_call_handle(&self, signature: FunctionSignature) -> Rc<FunctionHandle<'_>> {
         VM::make_call_handle(self.0.borrow().vm, signature)
     }
 
