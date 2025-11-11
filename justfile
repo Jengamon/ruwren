@@ -7,6 +7,12 @@ build *flags:
 run *flags:
     ^cargo run {{flags}}
 
+all-examples:
+    ls examples | \
+        each {|ex| $ex.name | parse -r 'examples/(?P<ename>.*)\.rs' | get ename} | \
+        flatten | \
+        each {|exname| ^cargo run --example $exname}
+
 example name *flags:
     with-env { RUST_BACKTRACE: 1 } { ^cargo run --example {{name}} {{flags}} }
 
