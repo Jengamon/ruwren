@@ -33,6 +33,7 @@ fn main() {
     let bindings = bindgen::Builder::default()
         .detect_include_paths(true)
         .header("wrapper.h")
+        .use_core()
         .allowlist_var("WREN.*")
         .allowlist_type("Wren.*")
         .allowlist_function("wren.*")
