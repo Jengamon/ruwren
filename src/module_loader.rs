@@ -1,12 +1,7 @@
-use crate::ModuleScriptLoader;
+use alloc::string::String;
 use std::path::{Path, PathBuf};
 
-pub struct NullLoader;
-impl ModuleScriptLoader for NullLoader {
-    fn load_script(&mut self, _: String) -> Option<String> {
-        None
-    }
-}
+use crate::ModuleScriptLoader;
 
 #[derive(Debug, Clone)]
 pub struct BasicFileLoader {
@@ -42,13 +37,13 @@ impl ModuleScriptLoader for BasicFileLoader {
                 match file.read_to_string(&mut contents) {
                     Ok(_) => Some(contents),
                     Err(file) => {
-                        eprintln!("failed to read file {:?}", file);
+                        std::eprintln!("failed to read file {:?}", file);
                         None
                     }
                 }
             }
             Err(file) => {
-                eprintln!("failed to open file {:?}", file);
+                std::eprintln!("failed to open file {:?}", file);
                 None
             }
         }

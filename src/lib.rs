@@ -1,21 +1,41 @@
 //! We expose the Wren API in a Rust-y way
+
+#![no_std]
+
+extern crate alloc;
+
+#[cfg(feature = "std")]
+extern crate std;
+
 pub extern crate wren_sys;
 
-use foreign_v2::ForeignItem;
-use std::any::{Any, TypeId};
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::{Rc, Weak};
+use alloc::{
+    boxed::Box,
+    collections::BTreeMap,
+    ffi::CString,
+    format,
+    rc::{Rc, Weak},
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
+use core::{
+    any::{self, Any, TypeId},
+    cell::RefCell,
+    ffi, marker, mem,
+};
 use std::sync::mpsc::{channel, Receiver, Sender};
+
+use foreign_v2::ForeignItem;
 use wren_sys::{wrenGetUserData, WrenConfiguration, WrenHandle, WrenVM};
 
+#[cfg(feature = "std")]
 mod module_loader;
-pub use module_loader::{BasicFileLoader, NullLoader};
+#[cfg(feature = "std")]
+pub use module_loader::BasicFileLoader;
 
 pub mod foreign_v1;
 pub mod foreign_v2;
-
-use std::{any, ffi, marker, mem, os::raw};
 
 mod runtime;
 #[cfg(test)]
@@ -55,15 +75,16 @@ pub struct VMStackFrameError {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn handle_panic<F, O>(func: F) -> Result<O, Box<dyn Any + Send>>
 where
-    F: FnOnce() -> O + std::panic::UnwindSafe,
+    F: FnOnce() -> O + core::panic::UnwindSafe,
 {
+    #[cfg(feature = "std")]
     std::panic::catch_unwind(func)
 }
 
 #[cfg(target_arch = "wasm32")]
 pub fn handle_panic<F, O: 'static>(func: F) -> Result<O, Box<dyn Any + Send>>
 where
-    F: FnOnce() -> O + std::panic::UnwindSafe,
+    F: FnOnce() -> O + core::panic::UnwindSafe,
 {
     match std::panic::catch_unwind(func) {
         Ok(o) => Ok(o),
@@ -71,8 +92,8 @@ where
     }
 }
 
-impl std::fmt::Display for VMError {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl core::fmt::Display for VMError {
+    fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
             VMError::Compile {
                 module,
@@ -98,7 +119,7 @@ impl std::fmt::Display for VMError {
     }
 }
 
-impl std::error::Error for VMError {}
+impl core::error::Error for VMError {}
 
 /// A handle to a Wren object
 #[derive(Debug, PartialEq, Eq)]
@@ -108,7 +129,7 @@ pub struct Handle<'a> {
     vm: marker::PhantomData<&'a VM>,
 }
 
-impl<'a> Drop for Handle<'a> {
+impl Drop for Handle<'_> {
     fn drop(&mut self) {
         unsafe {
             wren_sys::wrenReleaseHandle(self.wvm, self.handle);
@@ -123,14 +144,14 @@ pub struct FunctionHandle<'a>(Handle<'a>);
 /// Simulates a module structure for foreign functions
 #[derive(Debug, Clone, Default)]
 pub struct ModuleLibrary {
-    modules: HashMap<String, Module>,
+    modules: BTreeMap<String, Module>,
 }
 
 impl ModuleLibrary {
     /// Creates a new library
     pub fn new() -> ModuleLibrary {
         ModuleLibrary {
-            modules: HashMap::new(),
+            modules: BTreeMap::new(),
         }
     }
 
@@ -168,7 +189,7 @@ struct RuntimeClass {
 #[derive(Debug, Clone, Default)]
 /// A container for `RuntimeClass` structs
 pub struct Module {
-    classes: HashMap<String, RuntimeClass>,
+    classes: BTreeMap<String, RuntimeClass>,
 }
 
 #[derive(Debug, Clone)]
@@ -188,7 +209,7 @@ impl Module {
     /// Create a new module
     pub fn new() -> Module {
         Module {
-            classes: HashMap::new(),
+            classes: BTreeMap::new(),
         }
     }
 
@@ -260,6 +281,13 @@ where
     }
 }
 
+pub struct NullLoader;
+impl ModuleScriptLoader for NullLoader {
+    fn load_script(&mut self, _: String) -> Option<String> {
+        None
+    }
+}
+
 type Evm = Rc<RefCell<VM>>;
 
 /// Sends strings for printing to an output
@@ -280,11 +308,12 @@ where
 struct PrintlnPrinter;
 impl Printer for PrintlnPrinter {
     fn print(&mut self, s: String) {
-        print!("{}", s);
+        #[cfg(feature = "std")]
+        std::print!("{}", s);
     }
 }
 
-type ClassMap = RefCell<HashMap<TypeId, Rc<RefCell<Box<dyn Any>>>>>;
+type ClassMap = RefCell<BTreeMap<TypeId, Rc<RefCell<Box<dyn Any>>>>>;
 
 #[derive(Debug)]
 pub struct VM {
@@ -408,8 +437,8 @@ impl VMWrapper {
     pub fn interpret<M: AsRef<str>, C: AsRef<str>>(
         &self, module: M, code: C,
     ) -> Result<(), VMError> {
-        let module = ffi::CString::new(module.as_ref()).expect("module name conversion failed");
-        let code = ffi::CString::new(code.as_ref()).expect("code conversion failed");
+        let module = CString::new(module.as_ref()).expect("module name conversion failed");
+        let code = CString::new(code.as_ref()).expect("code conversion failed");
         let vm = self.0.borrow();
         match unsafe { wren_sys::wrenInterpret(vm.vm, module.as_ptr(), code.as_ptr()) } {
             wren_sys::WrenInterpretResult_WREN_RESULT_SUCCESS => Ok(()),
@@ -458,7 +487,7 @@ impl VMWrapper {
     /// Gets a handle to a value in a certain slot
     pub fn get_slot_handle(&self, slot: SlotId) -> Rc<Handle<'_>> {
         Rc::new(Handle {
-            handle: unsafe { wren_sys::wrenGetSlotHandle(self.0.borrow().vm, slot as raw::c_int) },
+            handle: unsafe { wren_sys::wrenGetSlotHandle(self.0.borrow().vm, slot as ffi::c_int) },
             wvm: self.0.borrow().vm,
             vm: marker::PhantomData,
         })
@@ -467,7 +496,7 @@ impl VMWrapper {
     /// Sets the value in a certain slot to the value of a handle
     pub fn set_slot_handle(&self, slot: SlotId, handle: &Handle) {
         unsafe {
-            wren_sys::wrenSetSlotHandle(self.0.borrow().vm, slot as raw::c_int, handle.handle)
+            wren_sys::wrenSetSlotHandle(self.0.borrow().vm, slot as ffi::c_int, handle.handle)
         }
     }
 
@@ -559,8 +588,8 @@ impl VMConfig {
 
         // Have an uninitialized VM...
         let wvm = Rc::new(RefCell::new(VM {
-            vm: std::ptr::null_mut(),
-            classes_v2: RefCell::new(HashMap::new()),
+            vm: core::ptr::null_mut(),
+            classes_v2: RefCell::new(BTreeMap::new()),
             error_recv: erx,
         }));
 
@@ -590,7 +619,7 @@ impl VMConfig {
             };
             config.initialHeapSize = self.initial_heap_size;
             config.minHeapSize = self.min_heap_size;
-            config.heapGrowthPercent = self.heap_growth_percent as raw::c_int;
+            config.heapGrowthPercent = self.heap_growth_percent as ffi::c_int;
             config.userData = vm_config as *mut ffi::c_void;
             config
         };
@@ -614,8 +643,8 @@ pub enum ForeignSendError {
     ClassMismatch,
 }
 
-impl std::fmt::Display for ForeignSendError {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl core::fmt::Display for ForeignSendError {
+    fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
             ForeignSendError::NoForeignClass => write!(fmt, "no foreign class"),
             ForeignSendError::NoWrenClass => write!(fmt, "no Wren class"),
@@ -625,12 +654,12 @@ impl std::fmt::Display for ForeignSendError {
     }
 }
 
-impl std::error::Error for ForeignSendError {}
+impl core::error::Error for ForeignSendError {}
 
 impl VM {
     // Slot and Handle API
     pub fn ensure_slots(&self, count: usize) {
-        unsafe { wren_sys::wrenEnsureSlots(self.vm, count as raw::c_int) }
+        unsafe { wren_sys::wrenEnsureSlots(self.vm, count as ffi::c_int) }
     }
 
     pub fn get_slot_count(&self) -> usize {
@@ -639,17 +668,17 @@ impl VM {
 
     pub fn set_slot_bool(&self, slot: SlotId, val: bool) {
         self.ensure_slots(slot + 1);
-        unsafe { wren_sys::wrenSetSlotBool(self.vm, slot as raw::c_int, val) }
+        unsafe { wren_sys::wrenSetSlotBool(self.vm, slot as ffi::c_int, val) }
     }
 
     pub fn set_slot_double(&self, slot: SlotId, val: f64) {
         self.ensure_slots(slot + 1);
-        unsafe { wren_sys::wrenSetSlotDouble(self.vm, slot as raw::c_int, val) }
+        unsafe { wren_sys::wrenSetSlotDouble(self.vm, slot as ffi::c_int, val) }
     }
 
     pub fn set_slot_null(&self, slot: SlotId) {
         self.ensure_slots(slot + 1);
-        unsafe { wren_sys::wrenSetSlotNull(self.vm, slot as raw::c_int) }
+        unsafe { wren_sys::wrenSetSlotNull(self.vm, slot as ffi::c_int) }
     }
 
     pub fn set_slot_bytes(&self, slot: SlotId, bytes: &[u8]) {
@@ -657,8 +686,8 @@ impl VM {
         unsafe {
             wren_sys::wrenSetSlotBytes(
                 self.vm,
-                slot as raw::c_int,
-                bytes as *const _ as *const raw::c_char,
+                slot as ffi::c_int,
+                bytes as *const _ as *const ffi::c_char,
                 bytes.len(),
             );
         }
@@ -670,7 +699,7 @@ impl VM {
         unsafe {
             wren_sys::wrenSetSlotBytes(
                 self.vm,
-                slot as raw::c_int,
+                slot as ffi::c_int,
                 string.as_ptr() as *const _,
                 string.len(),
             );
@@ -682,7 +711,7 @@ impl VM {
         if self.get_slot_type(slot) != SlotType::Bool {
             None
         } else {
-            unsafe { Some(wren_sys::wrenGetSlotBool(self.vm, slot as raw::c_int)) }
+            unsafe { Some(wren_sys::wrenGetSlotBool(self.vm, slot as ffi::c_int)) }
         }
     }
 
@@ -691,7 +720,7 @@ impl VM {
         if self.get_slot_type(slot) != SlotType::Num {
             None
         } else {
-            unsafe { Some(wren_sys::wrenGetSlotDouble(self.vm, slot as raw::c_int)) }
+            unsafe { Some(wren_sys::wrenGetSlotDouble(self.vm, slot as ffi::c_int)) }
         }
     }
 
@@ -700,9 +729,9 @@ impl VM {
         if self.get_slot_type(slot) != SlotType::String {
             None
         } else {
-            let mut length = 0 as raw::c_int;
+            let mut length = 0 as ffi::c_int;
             let ptr = unsafe {
-                wren_sys::wrenGetSlotBytes(self.vm, slot as raw::c_int, &mut length as *mut _)
+                wren_sys::wrenGetSlotBytes(self.vm, slot as ffi::c_int, &mut length as *mut _)
             };
             let mut bytes = vec![];
 
@@ -720,7 +749,7 @@ impl VM {
         if self.get_slot_type(slot) != SlotType::String {
             None
         } else {
-            let ptr = unsafe { wren_sys::wrenGetSlotString(self.vm, slot as raw::c_int) };
+            let ptr = unsafe { wren_sys::wrenGetSlotString(self.vm, slot as ffi::c_int) };
 
             let cstr = unsafe { ffi::CStr::from_ptr(ptr) };
 
@@ -730,7 +759,7 @@ impl VM {
 
     pub fn get_slot_type(&self, slot: SlotId) -> SlotType {
         self.ensure_slots(slot + 1);
-        match unsafe { wren_sys::wrenGetSlotType(self.vm, slot as raw::c_int) } {
+        match unsafe { wren_sys::wrenGetSlotType(self.vm, slot as ffi::c_int) } {
             wren_sys::WrenType_WREN_TYPE_NUM => SlotType::Num,
             wren_sys::WrenType_WREN_TYPE_BOOL => SlotType::Bool,
             wren_sys::WrenType_WREN_TYPE_LIST => SlotType::List,
@@ -753,10 +782,10 @@ impl VM {
         if !self.has_variable(&module, &name) {
             return false;
         }
-        let module = ffi::CString::new(module.as_ref()).expect("module name conversion failed");
-        let name = ffi::CString::new(name.as_ref()).expect("variable name conversion failed");
+        let module = CString::new(module.as_ref()).expect("module name conversion failed");
+        let name = CString::new(name.as_ref()).expect("variable name conversion failed");
         unsafe {
-            wren_sys::wrenGetVariable(self.vm, module.as_ptr(), name.as_ptr(), slot as raw::c_int)
+            wren_sys::wrenGetVariable(self.vm, module.as_ptr(), name.as_ptr(), slot as ffi::c_int)
         }
         true
     }
@@ -765,25 +794,25 @@ impl VM {
         if !self.has_module(&module) {
             return false;
         }
-        let module = ffi::CString::new(module.as_ref()).expect("module name conversion failed");
-        let name = ffi::CString::new(name.as_ref()).expect("variable name conversion failed");
+        let module = CString::new(module.as_ref()).expect("module name conversion failed");
+        let name = CString::new(name.as_ref()).expect("variable name conversion failed");
         unsafe { wren_sys::wrenHasVariable(self.vm, module.as_ptr(), name.as_ptr()) }
     }
 
     pub fn has_module<M: AsRef<str>>(&self, module: M) -> bool {
-        let module = ffi::CString::new(module.as_ref()).expect("module name conversion failed");
+        let module = CString::new(module.as_ref()).expect("module name conversion failed");
         unsafe { wren_sys::wrenHasModule(self.vm, module.as_ptr()) }
     }
 
     pub fn set_slot_new_list(&self, slot: SlotId) {
         self.ensure_slots(slot + 1);
-        unsafe { wren_sys::wrenSetSlotNewList(self.vm, slot as raw::c_int) }
+        unsafe { wren_sys::wrenSetSlotNewList(self.vm, slot as ffi::c_int) }
     }
 
     pub fn get_list_count(&self, slot: SlotId) -> Option<usize> {
         self.ensure_slots(slot + 1);
         if self.get_slot_type(slot) == SlotType::List {
-            Some(unsafe { wren_sys::wrenGetListCount(self.vm, slot as raw::c_int) as usize })
+            Some(unsafe { wren_sys::wrenGetListCount(self.vm, slot as ffi::c_int) as usize })
         } else {
             None
         }
@@ -795,9 +824,9 @@ impl VM {
         unsafe {
             wren_sys::wrenInsertInList(
                 self.vm,
-                list_slot as raw::c_int,
-                index as raw::c_int,
-                element_slot as raw::c_int,
+                list_slot as ffi::c_int,
+                index as ffi::c_int,
+                element_slot as ffi::c_int,
             )
         }
     }
@@ -808,9 +837,9 @@ impl VM {
         unsafe {
             wren_sys::wrenGetListElement(
                 self.vm,
-                list_slot as raw::c_int,
-                index as raw::c_int,
-                element_slot as raw::c_int,
+                list_slot as ffi::c_int,
+                index as ffi::c_int,
+                element_slot as ffi::c_int,
             )
         }
     }
@@ -821,22 +850,22 @@ impl VM {
         unsafe {
             wren_sys::wrenSetListElement(
                 self.vm,
-                list_slot as raw::c_int,
-                index as raw::c_int,
-                element_slot as raw::c_int,
+                list_slot as ffi::c_int,
+                index as ffi::c_int,
+                element_slot as ffi::c_int,
             )
         }
     }
 
     pub fn set_slot_new_map(&self, slot: SlotId) {
         self.ensure_slots(slot + 1);
-        unsafe { wren_sys::wrenSetSlotNewMap(self.vm, slot as raw::c_int) }
+        unsafe { wren_sys::wrenSetSlotNewMap(self.vm, slot as ffi::c_int) }
     }
 
     pub fn get_map_count(&self, slot: SlotId) -> Option<usize> {
         self.ensure_slots(slot + 1);
         if self.get_slot_type(slot) == SlotType::Map {
-            Some(unsafe { wren_sys::wrenGetMapCount(self.vm, slot as raw::c_int) as usize })
+            Some(unsafe { wren_sys::wrenGetMapCount(self.vm, slot as ffi::c_int) as usize })
         } else {
             None
         }
@@ -849,8 +878,8 @@ impl VM {
             Some(unsafe {
                 wren_sys::wrenGetMapContainsKey(
                     self.vm,
-                    map_slot as raw::c_int,
-                    key_slot as raw::c_int,
+                    map_slot as ffi::c_int,
+                    key_slot as ffi::c_int,
                 )
             })
         } else {
@@ -865,9 +894,9 @@ impl VM {
         unsafe {
             wren_sys::wrenGetMapValue(
                 self.vm,
-                map_slot as raw::c_int,
-                key_slot as raw::c_int,
-                value_slot as raw::c_int,
+                map_slot as ffi::c_int,
+                key_slot as ffi::c_int,
+                value_slot as ffi::c_int,
             )
         }
     }
@@ -879,9 +908,9 @@ impl VM {
         unsafe {
             wren_sys::wrenSetMapValue(
                 self.vm,
-                map_slot as raw::c_int,
-                key_slot as raw::c_int,
-                value_slot as raw::c_int,
+                map_slot as ffi::c_int,
+                key_slot as ffi::c_int,
+                value_slot as ffi::c_int,
             )
         }
     }
@@ -893,9 +922,9 @@ impl VM {
         unsafe {
             wren_sys::wrenRemoveMapValue(
                 self.vm,
-                map_slot as raw::c_int,
-                key_slot as raw::c_int,
-                removed_value_slot as raw::c_int,
+                map_slot as ffi::c_int,
+                key_slot as ffi::c_int,
+                removed_value_slot as ffi::c_int,
             )
         }
     }
@@ -911,9 +940,9 @@ impl VM {
             return None;
         }
         unsafe {
-            let ptr = wren_sys::wrenGetSlotForeign(self.vm, slot as raw::c_int);
+            let ptr = wren_sys::wrenGetSlotForeign(self.vm, slot as ffi::c_int);
             if !ptr.is_null() {
-                let fo = std::ptr::read_unaligned(ptr as *mut ForeignObject<T>);
+                let fo = core::ptr::read_unaligned(ptr as *mut ForeignObject<T>);
                 let ret = if fo.type_id == any::TypeId::of::<T>() {
                     // Safe to downcast
                     fo.object.as_mut()
@@ -921,7 +950,7 @@ impl VM {
                     // Incorrect type, unsafe to downcast
                     None
                 };
-                std::ptr::write_unaligned(ptr as *mut ForeignObject<T>, fo);
+                core::ptr::write_unaligned(ptr as *mut ForeignObject<T>, fo);
                 ret
             } else {
                 None
@@ -1002,7 +1031,7 @@ impl VM {
     ) -> Result<&mut T, ForeignSendError> {
         self.ensure_slots(slot.max(scratch) + 1);
         let conf = unsafe {
-            std::ptr::read_unaligned(wren_sys::wrenGetUserData(self.vm) as *mut UserData)
+            core::ptr::read_unaligned(wren_sys::wrenGetUserData(self.vm) as *mut UserData)
         };
 
         // Why did I put this here? (well the equivalent in the original method...)
@@ -1036,14 +1065,14 @@ impl VM {
                             // Create the Wren foreign pointer
                             let wptr = wren_sys::wrenSetSlotNewForeign(
                                 self.vm,
-                                slot as raw::c_int,
-                                scratch as raw::c_int,
+                                slot as ffi::c_int,
+                                scratch as ffi::c_int,
                                 mem::size_of::<ForeignObject<T>>(),
                             );
 
                             if !wptr.is_null() {
                                 // Move the ForeignObject into the pointer
-                                std::ptr::write_unaligned(wptr as *mut _, new_obj);
+                                core::ptr::write_unaligned(wptr as *mut _, new_obj);
                             }
 
                             // Reinterpret the pointer as an object if we were successful
@@ -1062,7 +1091,7 @@ impl VM {
         };
 
         unsafe {
-            std::ptr::write_unaligned(wrenGetUserData(self.vm) as *mut UserData, conf);
+            core::ptr::write_unaligned(wrenGetUserData(self.vm) as *mut UserData, conf);
         }
         ret
     }
@@ -1071,7 +1100,7 @@ impl VM {
         vm: *mut WrenVM, signature: FunctionSignature,
     ) -> Rc<FunctionHandle<'b>> {
         let signature =
-            ffi::CString::new(signature.as_wren_string()).expect("signature conversion failed");
+            CString::new(signature.as_wren_string()).expect("signature conversion failed");
         Rc::new(FunctionHandle(Handle {
             handle: unsafe { wren_sys::wrenMakeCallHandle(vm, signature.as_ptr()) },
             wvm: vm,
@@ -1080,7 +1109,7 @@ impl VM {
     }
 
     pub fn abort_fiber(&self, slot: SlotId) {
-        unsafe { wren_sys::wrenAbortFiber(self.vm, slot as raw::c_int) }
+        unsafe { wren_sys::wrenAbortFiber(self.vm, slot as ffi::c_int) }
     }
 
     pub fn get_version_number(&self) -> i32 {

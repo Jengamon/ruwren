@@ -1,5 +1,7 @@
+use alloc::string::{String, ToString};
+use core::ffi;
+
 use crate::{UserData, WrenError};
-use std::{ffi, os::raw};
 use wren_sys::{WrenErrorType, WrenForeignClassMethods, WrenLoadModuleResult, WrenVM};
 
 // Force Wren to use Rust's allocator to allocate memory
@@ -12,24 +14,25 @@ pub unsafe extern "C" fn wren_realloc(
         if memory.is_null() {
             // If memory == NULL
             if new_size == 0 {
-                std::ptr::null_mut()
+                core::ptr::null_mut()
             } else {
                 // allocate new memory
-                std::alloc::alloc_zeroed(std::alloc::Layout::from_size_align(new_size, 8).unwrap())
-                    as *mut _
+                alloc::alloc::alloc_zeroed(
+                    alloc::alloc::Layout::from_size_align(new_size, 8).unwrap(),
+                ) as *mut _
             }
         } else {
             // Memory is an actual pointer to a location.
             if new_size == 0 {
-                std::alloc::dealloc(
+                alloc::alloc::dealloc(
                     memory as *mut _,
-                    std::alloc::Layout::from_size_align(0, 8).unwrap(),
+                    alloc::alloc::Layout::from_size_align(0, 8).unwrap(),
                 );
-                std::ptr::null_mut()
+                core::ptr::null_mut()
             } else {
-                std::alloc::realloc(
+                alloc::alloc::realloc(
                     memory as *mut _,
-                    std::alloc::Layout::from_size_align(new_size, 8).unwrap(),
+                    alloc::alloc::Layout::from_size_align(new_size, 8).unwrap(),
                     new_size,
                 ) as *mut _
             }
@@ -38,8 +41,8 @@ pub unsafe extern "C" fn wren_realloc(
 }
 
 pub extern "C" fn wren_error(
-    vm: *mut WrenVM, typ: WrenErrorType, module: *const raw::c_char, line: raw::c_int,
-    message: *const raw::c_char,
+    vm: *mut WrenVM, typ: WrenErrorType, module: *const ffi::c_char, line: ffi::c_int,
+    message: *const ffi::c_char,
 ) {
     let conf = unsafe { &mut *(wren_sys::wrenGetUserData(vm) as *mut UserData) };
     match typ {
@@ -77,7 +80,7 @@ pub extern "C" fn wren_error(
     }
 }
 
-pub extern "C" fn wren_print(vm: *mut WrenVM, message: *const raw::c_char) {
+pub extern "C" fn wren_print(vm: *mut WrenVM, message: *const ffi::c_char) {
     let conf = unsafe { &mut *(wren_sys::wrenGetUserData(vm) as *mut UserData) };
     let message_str = unsafe { ffi::CStr::from_ptr(message) };
     conf.printer
@@ -85,8 +88,8 @@ pub extern "C" fn wren_print(vm: *mut WrenVM, message: *const raw::c_char) {
 }
 
 pub extern "C" fn wren_bind_foreign_method(
-    vm: *mut WrenVM, mdl: *const raw::c_char, class: *const raw::c_char, is_static: bool,
-    sgn: *const raw::c_char,
+    vm: *mut WrenVM, mdl: *const ffi::c_char, class: *const ffi::c_char, is_static: bool,
+    sgn: *const ffi::c_char,
 ) -> Option<unsafe extern "C" fn(*mut WrenVM)> {
     let conf = unsafe { &mut *(wren_sys::wrenGetUserData(vm) as *mut UserData) };
     let module = unsafe { ffi::CStr::from_ptr(mdl) };
@@ -114,7 +117,7 @@ pub extern "C" fn wren_bind_foreign_method(
 }
 
 pub extern "C" fn wren_bind_foreign_class(
-    vm: *mut WrenVM, mdl: *const raw::c_char, class: *const raw::c_char,
+    vm: *mut WrenVM, mdl: *const ffi::c_char, class: *const ffi::c_char,
 ) -> WrenForeignClassMethods {
     let mut fcm = WrenForeignClassMethods {
         allocate: None,
@@ -136,7 +139,7 @@ pub extern "C" fn wren_bind_foreign_class(
 }
 
 pub extern "C" fn wren_load_module(
-    vm: *mut WrenVM, name: *const raw::c_char,
+    vm: *mut WrenVM, name: *const ffi::c_char,
 ) -> WrenLoadModuleResult {
     // The whoooole reason we wrote wren_realloc - to force Wren into Rust's allocation space
     let conf = unsafe { &mut *(wren_sys::wrenGetUserData(vm) as *mut UserData) };
@@ -145,7 +148,7 @@ pub extern "C" fn wren_load_module(
         .loader
         .load_script(module_name.to_string_lossy().to_string())
     {
-        Some(string) => ffi::CString::new(string)
+        Some(string) => alloc::ffi::CString::new(string)
             .unwrap_or_else(|_| {
                 panic!(
                     "Failed to convert source to C string for {}",
@@ -153,19 +156,19 @@ pub extern "C" fn wren_load_module(
                 )
             })
             .into_raw(),
-        None => std::ptr::null_mut(),
+        None => core::ptr::null_mut(),
     };
 
     WrenLoadModuleResult {
         source,
         onComplete: None,
-        userData: std::ptr::null_mut(),
+        userData: core::ptr::null_mut(),
     }
 }
 
 pub extern "C" fn wren_canonicalize(
-    _: *mut WrenVM, importer: *const raw::c_char, name: *const raw::c_char,
-) -> *const raw::c_char {
+    _: *mut WrenVM, importer: *const ffi::c_char, name: *const ffi::c_char,
+) -> *const ffi::c_char {
     let _importer = unsafe { ffi::CStr::from_ptr(importer) };
     let _name = unsafe { ffi::CStr::from_ptr(name) };
     let _importer = _importer.to_string_lossy();
@@ -173,7 +176,7 @@ pub extern "C" fn wren_canonicalize(
 
     if let Some('@') = _name.chars().next() {
         let real_name: String = _name.chars().skip(1).collect();
-        ffi::CString::new(format!("{}/{}", _importer, real_name))
+        alloc::ffi::CString::new(alloc::format!("{}/{}", _importer, real_name))
             .unwrap_or_else(|_| {
                 panic!(
                     "Failed to convert name {}/{} to C string",

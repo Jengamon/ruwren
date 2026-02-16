@@ -1,4 +1,10 @@
-use std::{any::type_name, collections::HashMap, string::FromUtf8Error};
+use alloc::{
+    collections::BTreeMap,
+    string::{FromUtf8Error, String},
+    vec,
+    vec::Vec,
+};
+use core::any::type_name;
 
 use crate::{SlotId, SlotType, VM};
 
@@ -266,7 +272,7 @@ where
             TryInto::<[T; N]>::try_into(arr).ok()
         }
 
-        let mut items: [Option<T>; N] = std::array::from_fn(|_| None);
+        let mut items: [Option<T>; N] = core::array::from_fn(|_| None);
         for (i, item) in items.iter_mut().enumerate() {
             vm.get_list_element(slot, i as i32, scratch_start);
             *item = T::try_from_vm(vm, scratch_start, scratch_start + 1);
@@ -314,7 +320,25 @@ where
     }
 }
 
-impl<K, V> WrenTo for HashMap<K, V>
+impl<K, V> WrenTo for BTreeMap<K, V>
+where
+    K: WrenAtom,
+    V: WrenAtom,
+{
+    const SCRATCH_SPACE: usize = 2 + K::SCRATCH_SPACE + V::SCRATCH_SPACE;
+
+    fn to_vm(self, vm: &VM, slot: SlotId, scratch_start: SlotId) {
+        vm.set_slot_new_map(slot);
+        for (k, v) in self.into_iter() {
+            k.to_vm(vm, scratch_start, scratch_start + 2);
+            v.to_vm(vm, scratch_start + 1, scratch_start + 2);
+            vm.set_map_value(slot, scratch_start, scratch_start + 1);
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl<K, V> WrenTo for std::collections::HashMap<K, V>
 where
     K: WrenAtom,
     V: WrenAtom,

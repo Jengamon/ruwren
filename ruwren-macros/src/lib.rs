@@ -48,7 +48,7 @@ fn generate_class(
             quote! {
                 struct #cname;
 
-                impl From<#name> for #cname {
+                impl ::core::convert::From<#name> for #cname {
                     #[inline]
                     fn from(source: #name) -> Self {
                         Self
@@ -88,7 +88,7 @@ fn generate_class(
                     ),*
                 }
 
-                impl From<#name> for #cname {
+                impl ::core::convert::From<#name> for #cname {
                     #[inline]
                     fn from(source: #name) -> Self {
                         Self {
@@ -138,7 +138,7 @@ fn generate_class(
                         ),*
                     );
 
-                    impl From<#name> for #cname {
+                    impl ::core::convert::From<#name> for #cname {
                         #[inline]
                         fn from(source: #name) -> Self {
                             Self (
@@ -153,7 +153,7 @@ fn generate_class(
                 quote! {
                     struct #cname;
 
-                    impl From<#name> for #cname {
+                    impl ::core::convert::From<#name> for #cname {
                         #[inline]
                         fn from(source: #name) -> Self {
                             Self
@@ -174,7 +174,7 @@ fn generate_instance(
             quote! {
                 struct #iname;
 
-                impl From<#name> for #iname {
+                impl ::core::convert::From<#name> for #iname {
                     #[inline]
                     fn from(source: #name) -> Self {
                         Self
@@ -214,7 +214,7 @@ fn generate_instance(
                     ),*
                 }
 
-                impl From<#name> for #iname {
+                impl ::core::convert::From<#name> for #iname {
                     #[inline]
                     fn from(source: #name) -> Self {
                         Self {
@@ -264,7 +264,7 @@ fn generate_instance(
                         ),*
                     );
 
-                    impl From<#name> for #iname {
+                    impl ::core::convert::From<#name> for #iname {
                         #[inline]
                         fn from(source: #name) -> Self {
                             Self (
@@ -279,7 +279,7 @@ fn generate_instance(
                 quote! {
                     struct #iname;
 
-                    impl From<#name> for #iname {
+                    impl ::core::convert::From<#name> for #iname {
                         #[inline]
                         fn from(source: #name) -> Self {
                             Self
@@ -302,21 +302,21 @@ fn generate_wrapper(name: &syn::Ident) -> proc_macro2::TokenStream {
             instance: &'a mut #iname,
         }
 
-        impl<'a> From<&#wname<'a>> for #name {
+        impl<'a> ::core::convert::From<&#wname<'a>> for #name {
             #[inline]
             fn from(wrapper: &#wname<'a>) -> Self {
                 (&*wrapper.class, &*wrapper.instance).into()
             }
         }
 
-        impl<'a> From<(&'a mut #cname, &'a mut #iname)> for #wname<'a> {
+        impl<'a> ::core::convert::From<(&'a mut #cname, &'a mut #iname)> for #wname<'a> {
             #[inline]
             fn from((class, instance): (&'a mut #cname, &'a mut #iname)) -> Self {
                 Self { class, instance }
             }
         }
 
-        impl<'a> std::ops::Deref for #wname<'a> {
+        impl<'a> ::core::ops::Deref for #wname<'a> {
             type Target = #iname;
             #[inline]
             fn deref(&self) -> &#iname {
@@ -324,7 +324,7 @@ fn generate_wrapper(name: &syn::Ident) -> proc_macro2::TokenStream {
             }
         }
 
-        impl<'a> std::ops::DerefMut for #wname<'a> {
+        impl<'a> ::core::ops::DerefMut for #wname<'a> {
             #[inline]
             fn deref_mut(&mut self) -> &mut #iname {
                 &mut self.instance
@@ -407,7 +407,7 @@ fn generate_enhancements(
     };
 
     quote! {
-        impl<'a> From<(&'a #class_name, &'a #instance_name)> for #name {
+        impl<'a> ::core::convert::From<(&'a #class_name, &'a #instance_name)> for #name {
             #[allow(clippy::clone_on_copy)]
             #[inline]
             fn from((class, inst): (&'a #class_name, &'a #instance_name)) -> Self {
@@ -415,10 +415,10 @@ fn generate_enhancements(
             }
         }
 
-        impl TryFrom<Option<#name>> for #name {
+        impl ::core::convert::TryFrom<::core::option::Option<#name>> for #name {
             type Error = ();
 
-            fn try_from(value: Option<#name>) -> Result<Self, Self::Error> {
+            fn try_from(value: Option<#name>) -> ::core::result::Result<Self, Self::Error> {
                 value.ok_or(())
             }
         }
@@ -581,11 +581,11 @@ impl WrenImplValidFn {
                 };
                 let failure = if constructor_mode {
                     quote! {
-                        return Err(format!("failed to get value of type {} for slot {}", std::any::type_name::<#ty>(), #slot_idx));
+                        return Err(format!("failed to get value of type {} for slot {}", core::any::type_name::<#ty>(), #slot_idx));
                     }
                 } else {
                     quote! {
-                        ruwren::foreign_v2::WrenTo::to_vm(format!("failed to get value of type {} for slot {}", std::any::type_name::<#ty>(), #slot_idx), vm, 0, 1);
+                        ruwren::foreign_v2::WrenTo::to_vm(format!("failed to get value of type {} for slot {}", core::any::type_name::<#ty>(), #slot_idx), vm, 0, 1);
                         vm.abort_fiber(0);
                         return
                     }
@@ -642,11 +642,11 @@ impl WrenImplValidFn {
             };
             let failure = if constructor_mode {
                 quote! {
-                    return Err(format!("failed to get value of type {} for slot {}", std::any::type_name::<#ty>(), #slot_idx));
+                    return Err(format!("failed to get value of type {} for slot {}", core::any::type_name::<#ty>(), #slot_idx));
                 }
             } else {
                 quote! {
-                    ruwren::foreign_v2::WrenTo::to_vm(format!("failed to get value of type {} for slot {}", std::any::type_name::<#ty>(), #slot_idx), vm, 0, 1);
+                    ruwren::foreign_v2::WrenTo::to_vm(format!("failed to get value of type {} for slot {}", core::any::type_name::<#ty>(), #slot_idx), vm, 0, 1);
                     vm.abort_fiber(0);
                     return
                 }
@@ -683,7 +683,7 @@ impl WrenImplValidFn {
                             Err(_) => panic!(
                                 "slot {} cannot be type {}",
                                 #slot_idx,
-                                std::any::type_name::<#ty>()
+                                core::any::type_name::<#ty>()
                             ),
                         }
                     }
@@ -784,7 +784,7 @@ impl WrenImplValidFn {
                 #vis unsafe extern "C" fn #native_name(vm: *mut ruwren::wren_sys::WrenVM) {
                     use std::panic::{set_hook, take_hook, AssertUnwindSafe};
 
-                    let conf = std::ptr::read_unaligned(
+                    let conf = ::core::ptr::read_unaligned(
                         ruwren::wren_sys::wrenGetUserData(vm) as *mut ruwren::UserData
                     );
                     let ovm = vm;
@@ -801,7 +801,7 @@ impl WrenImplValidFn {
                         })
                     };
                     drop(take_hook());
-                    std::ptr::write_unaligned(
+                    ::core::ptr::write_unaligned(
                         ruwren::wren_sys::wrenGetUserData(ovm) as *mut ruwren::UserData,
                         conf,
                     );
@@ -812,7 +812,7 @@ impl WrenImplValidFn {
                 #vis unsafe extern "C" fn #native_name(vm: *mut ruwren::wren_sys::WrenVM) {
                     use std::panic::{set_hook, take_hook, AssertUnwindSafe};
 
-                    let conf = std::ptr::read_unaligned(
+                    let conf = ::core::ptr::read_unaligned(
                         ruwren::wren_sys::wrenGetUserData(vm) as *mut ruwren::UserData
                     );
                     let ovm = vm;
@@ -828,7 +828,7 @@ impl WrenImplValidFn {
                             .unwrap_or_else(|| panic!(
                                 "Tried to call {0} of {1} on non-{1} type",
                                 stringify!($inf),
-                                std::any::type_name::<#instance_name>()
+                                ::core::any::type_name::<#instance_name>()
                             ));
                         vm_borrow.use_class_mut::<#instance_name, _, _>(|vm, cls| {
                             let class =
@@ -838,7 +838,7 @@ impl WrenImplValidFn {
                         })
                     };
                     drop(take_hook());
-                    std::ptr::write_unaligned(
+                    ::core::ptr::write_unaligned(
                         ruwren::wren_sys::wrenGetUserData(ovm) as *mut ruwren::UserData,
                         conf,
                     );
@@ -1405,7 +1405,7 @@ pub fn wren_impl(
                     use ruwren::handle_panic as catch_unwind;
                     unsafe {
                         let ud = ruwren::wren_sys::wrenGetUserData(vm);
-                        let conf = std::ptr::read_unaligned(ud as *mut ruwren::UserData);
+                        let conf = core::ptr::read_unaligned(ud as *mut ruwren::UserData);
                         let ovm = vm;
                         let vm = std::rc::Weak::upgrade(&conf.vm)
                             .unwrap_or_else(|| panic!("Failed to access VM at {:p}", &conf.vm));
@@ -1422,11 +1422,11 @@ pub fn wren_impl(
                                     std::mem::size_of::<ruwren::ForeignObject<#instance_ty>>()
                                 );
 
-                                std::ptr::write(
+                                core::ptr::write(
                                     wptr as *mut _,
                                     ruwren::ForeignObject {
                                         object: Box::into_raw(Box::new(object)),
-                                        type_id: std::any::TypeId::of::<#instance_ty>(),
+                                        type_id: core::any::TypeId::of::<#instance_ty>(),
                                     },
                                 );
                             },
@@ -1436,7 +1436,7 @@ pub fn wren_impl(
                             }
                         };
                         drop(take_hook());
-                        std::ptr::write_unaligned(
+                        core::ptr::write_unaligned(
                             ud as *mut ruwren::UserData,
                             conf
                         );
@@ -1453,12 +1453,12 @@ pub fn wren_impl(
                 extern "C" fn _destructor(data: *mut std::ffi::c_void) {
                     unsafe {
                         let mut fo: ruwren::ForeignObject<#instance_ty> =
-                            std::ptr::read_unaligned(data as *mut _);
+                            ::core::ptr::read_unaligned(data as *mut _);
                         if !fo.object.is_null() {
                             _ = Box::from_raw(fo.object);
                         }
-                        fo.object = std::ptr::null_mut();
-                        std::ptr::write_unaligned(data as *mut _, fo);
+                        fo.object = core::ptr::null_mut();
+                        ::core::ptr::write_unaligned(data as *mut _, fo);
                     }
                 }
 
