@@ -1,3 +1,5 @@
+use alloc::string::String;
+
 use super::{create_module, get_slot_checked, VMConfig};
 
 struct Point {
@@ -86,7 +88,8 @@ fn init_vm() {
 fn test_small_wren_program() {
     let vm = VMConfig::new().build();
     let interp = vm.interpret("main", "System.print(\"I am running in a VM!\")");
-    println!("{:?}", interp);
+    #[cfg(feature = "std")]
+    std::println!("{:?}", interp);
     assert!(interp.is_ok());
 }
 
@@ -160,7 +163,8 @@ fn test_external_module() {
     }
     ",
     );
-    println!("{:?}", source);
+    #[cfg(feature = "std")]
+    std::println!("{:?}", source);
     assert!(source.is_ok());
 
     vm.execute(|vm| {
@@ -171,7 +175,8 @@ fn test_external_module() {
     let _ = vm.get_slot_handle(0);
     let interp = vm.call(super::FunctionSignature::new_function("update", 1));
     if let Err(e) = interp.clone() {
-        eprintln!("{}", e);
+        #[cfg(feature = "std")]
+        std::eprintln!("{}", e);
     }
     assert!(interp.is_ok());
     vm.execute(|vm| {
@@ -267,7 +272,8 @@ fn foreign_instance() {
     }
     ",
     );
-    println!("{:?}", source);
+    #[cfg(feature = "std")]
+    std::println!("{:?}", source);
     assert!(source.is_ok());
 
     vm.execute(|vm| {
@@ -279,7 +285,8 @@ fn foreign_instance() {
     let interp = vm.call(super::FunctionSignature::new_function("update", 1));
     let _ = vm.get_slot_handle(0);
     if let Err(e) = interp.clone() {
-        eprintln!("{}", e);
+        #[cfg(feature = "std")]
+        std::eprintln!("{}", e);
     }
     assert!(interp.is_ok());
     vm.execute(|vm| {

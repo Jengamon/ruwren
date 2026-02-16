@@ -21,8 +21,9 @@ ruwren-sys = { version = "0.5.0", path = "ruwren-sys" }
 ruwren-macros = { version = "0.5.0", path = "ruwren-macros", optional = true }
 
 [features]
-default = ["derive"]
+default = ["derive", "std"]
 derive = ["dep:ruwren-macros"]
+std = []
 
 [dev-dependencies]
 criterion = "0.7"
