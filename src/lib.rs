@@ -24,7 +24,6 @@ use core::{
     cell::RefCell,
     ffi, marker, mem,
 };
-use std::sync::mpsc::{channel, Receiver, Sender};
 
 use foreign_v2::ForeignItem;
 use wren_sys::{wrenGetUserData, WrenConfiguration, WrenHandle, WrenVM};
@@ -34,6 +33,7 @@ mod module_loader;
 #[cfg(feature = "std")]
 pub use module_loader::BasicFileLoader;
 
+#[cfg(feature = "std")]
 pub mod foreign_v1;
 pub mod foreign_v2;
 
@@ -72,12 +72,11 @@ pub struct VMStackFrameError {
     pub function: String,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 pub fn handle_panic<F, O>(func: F) -> Result<O, Box<dyn Any + Send>>
 where
     F: FnOnce() -> O + core::panic::UnwindSafe,
 {
-    #[cfg(feature = "std")]
     std::panic::catch_unwind(func)
 }
 
@@ -310,6 +309,8 @@ impl Printer for PrintlnPrinter {
     fn print(&mut self, s: String) {
         #[cfg(feature = "std")]
         std::print!("{}", s);
+        // Avoid clippy error when `std` is disabled.
+        let _ = s;
     }
 }
 
@@ -319,12 +320,14 @@ type ClassMap = RefCell<BTreeMap<TypeId, Rc<RefCell<Box<dyn Any>>>>>;
 pub struct VM {
     pub vm: *mut WrenVM,
     classes_v2: ClassMap,
-    error_recv: Receiver<WrenError>,
+    /// Same as [`UserData::errors`]
+    errors: Rc<RefCell<Vec<WrenError>>>,
 }
 
 /// A mostly internal class that is exposed so that some externally generated code can access it.
 pub struct UserData {
-    error_channel: Sender<WrenError>,
+    /// Same as [`VM::errors`]
+    errors: Rc<RefCell<Vec<WrenError>>>,
     printer: Box<dyn Printer>,
     pub vm: Weak<RefCell<VM>>, // is used a *lot* by externally generated code.
     library: Option<ModuleLibrary>,
@@ -412,7 +415,9 @@ impl VMWrapper {
             wren_sys::WrenInterpretResult_WREN_RESULT_RUNTIME_ERROR => {
                 let mut error = "".to_string();
                 let mut frames = vec![];
-                while let Ok(err) = vm.error_recv.try_recv() {
+                let mut errors = vm.errors.borrow_mut();
+                let all_indices = 0..errors.len();
+                for err in errors.drain(all_indices) {
                     match err {
                         WrenError::Runtime(msg) => {
                             error = msg;
@@ -443,8 +448,11 @@ impl VMWrapper {
         match unsafe { wren_sys::wrenInterpret(vm.vm, module.as_ptr(), code.as_ptr()) } {
             wren_sys::WrenInterpretResult_WREN_RESULT_SUCCESS => Ok(()),
             wren_sys::WrenInterpretResult_WREN_RESULT_COMPILE_ERROR => {
-                match vm.error_recv.try_recv() {
-                    Ok(WrenError::Compile(module, line, msg)) => Err(VMError::Compile {
+                let mut errors = vm.errors.borrow_mut();
+                let all_indices = 0..errors.len();
+                let mut draiend_errors = errors.drain(all_indices);
+                match (draiend_errors.next(), draiend_errors.next()) {
+                    (Some(WrenError::Compile(module, line, msg)), None) => Err(VMError::Compile {
                         module,
                         line,
                         error: msg,
@@ -455,7 +463,9 @@ impl VMWrapper {
             wren_sys::WrenInterpretResult_WREN_RESULT_RUNTIME_ERROR => {
                 let mut error = "".to_string();
                 let mut frames = vec![];
-                while let Ok(err) = vm.error_recv.try_recv() {
+                let mut errors = vm.errors.borrow_mut();
+                let all_indices = 0..errors.len();
+                for err in errors.drain(all_indices) {
                     match err {
                         WrenError::Runtime(msg) => {
                             error = msg;
@@ -584,21 +594,20 @@ impl VMConfig {
     }
 
     pub fn build(self) -> VMWrapper {
-        let (etx, erx) = channel();
-
+        let errors = Rc::new(RefCell::new(Vec::new()));
         // Have an uninitialized VM...
         let wvm = Rc::new(RefCell::new(VM {
             vm: core::ptr::null_mut(),
             classes_v2: RefCell::new(BTreeMap::new()),
-            error_recv: erx,
+            errors: errors.clone(),
         }));
 
         let vm_config = Box::into_raw(Box::new(UserData {
-            error_channel: etx,
             printer: self.printer,
             vm: Rc::downgrade(&wvm),
             loader: self.script_loader,
             library: self.library,
+            errors,
         }));
 
         // Configure the Wren side of things

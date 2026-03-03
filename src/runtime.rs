@@ -49,32 +49,26 @@ pub extern "C" fn wren_error(
         wren_sys::WrenErrorType_WREN_ERROR_COMPILE => {
             let module_str = unsafe { ffi::CStr::from_ptr(module) };
             let message_str = unsafe { ffi::CStr::from_ptr(message) };
-            conf.error_channel
-                .send(WrenError::Compile(
-                    module_str.to_string_lossy().to_string(),
-                    line,
-                    message_str.to_string_lossy().to_string(),
-                ))
-                .unwrap();
+            conf.errors.borrow_mut().push(WrenError::Compile(
+                module_str.to_string_lossy().to_string(),
+                line,
+                message_str.to_string_lossy().to_string(),
+            ));
         }
         wren_sys::WrenErrorType_WREN_ERROR_RUNTIME => {
             let message_str = unsafe { ffi::CStr::from_ptr(message) };
-            conf.error_channel
-                .send(WrenError::Runtime(
-                    message_str.to_string_lossy().to_string(),
-                ))
-                .unwrap();
+            conf.errors.borrow_mut().push(WrenError::Runtime(
+                message_str.to_string_lossy().to_string(),
+            ));
         }
         wren_sys::WrenErrorType_WREN_ERROR_STACK_TRACE => {
             let module_str = unsafe { ffi::CStr::from_ptr(module) };
             let message_str = unsafe { ffi::CStr::from_ptr(message) };
-            conf.error_channel
-                .send(WrenError::StackTrace(
-                    module_str.to_string_lossy().to_string(),
-                    line,
-                    message_str.to_string_lossy().to_string(),
-                ))
-                .unwrap();
+            conf.errors.borrow_mut().push(WrenError::StackTrace(
+                module_str.to_string_lossy().to_string(),
+                line,
+                message_str.to_string_lossy().to_string(),
+            ));
         }
         _ => unreachable!(),
     }
