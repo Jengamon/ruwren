@@ -51,7 +51,7 @@ pub enum WrenError {
     StackTrace(String, i32, String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 /// Possible errors for a Wren script
 pub enum VMError {
     Compile {
@@ -65,7 +65,7 @@ pub enum VMError {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct VMStackFrameError {
     pub module: String,
     pub line: i32,

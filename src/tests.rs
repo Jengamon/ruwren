@@ -1,4 +1,8 @@
+use std::vec::Vec;
+
 use alloc::string::String;
+
+use crate::{VMError, VMStackFrameError};
 
 use super::{create_module, get_slot_checked, VMConfig};
 
@@ -293,4 +297,27 @@ fn foreign_instance() {
         assert_eq!(vm.get_slot_type(0), super::SlotType::Num);
         assert_eq!(vm.get_slot_double(0), Some(21.45));
     });
+}
+
+#[test]
+fn test_errors() {
+    let vm = VMConfig::new().build();
+    let result = vm.interpret(
+        "main",
+        "
+    var aMap = {}
+    aMap.unknownFunction()
+    ",
+    );
+    assert_eq!(
+        result,
+        Err(VMError::Runtime {
+            error: "Map does not implement 'unknownFunction()'.".into(),
+            frames: Vec::from_iter([VMStackFrameError {
+                module: "main".into(),
+                line: 3,
+                function: "(script)".into()
+            }]),
+        })
+    );
 }
