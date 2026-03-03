@@ -80,7 +80,7 @@ where
     std::panic::catch_unwind(func)
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "std"))]
 pub fn handle_panic<F, O: 'static>(func: F) -> Result<O, Box<dyn Any + Send>>
 where
     F: FnOnce() -> O + core::panic::UnwindSafe,
@@ -89,6 +89,16 @@ where
         Ok(o) => Ok(o),
         _ => unreachable!("non-unwinding platforms (like WASM) can't catch unwinds, so don't panic unless absolutely necessary"),
     }
+}
+
+#[cfg(not(feature = "std"))]
+pub fn handle_panic<F, O: 'static>(func: F) -> Result<O, Box<dyn Any + Send>>
+where
+    F: FnOnce() -> O + core::panic::UnwindSafe,
+{
+    // `no_std` cannot currently catch unwind.
+    // See <https://github.com/rust-lang/rfcs/issues/2810>
+    Ok(func())
 }
 
 impl core::fmt::Display for VMError {
