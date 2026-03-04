@@ -197,7 +197,7 @@ impl FooClass {
     }
 }
 
-impl<'a> FooWrapper<'a> {
+impl FooWrapper<'_> {
     fn bar(&mut self, val: Option<f64>) {
         match val {
             Some(val) => {

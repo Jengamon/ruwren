@@ -1,4 +1,5 @@
 use ruwren::{wren_impl, wren_module, ModuleLibrary, VMConfig, WrenObject};
+
 #[derive(WrenObject, Default)]
 struct Foo {
     bar: f64,
