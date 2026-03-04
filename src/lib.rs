@@ -460,8 +460,8 @@ impl VMWrapper {
             wren_sys::WrenInterpretResult_WREN_RESULT_COMPILE_ERROR => {
                 let mut errors = vm.errors.borrow_mut();
                 let all_indices = 0..errors.len();
-                let mut draiend_errors = errors.drain(all_indices);
-                match (draiend_errors.next(), draiend_errors.next()) {
+                let mut drained_errors = errors.drain(all_indices);
+                match (drained_errors.next(), drained_errors.next()) {
                     (Some(WrenError::Compile(module, line, msg)), None) => Err(VMError::Compile {
                         module,
                         line,
