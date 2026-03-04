@@ -1,6 +1,6 @@
 # Ruwren: Wren bindings for Rust [![Crates.io](https://img.shields.io/crates/v/ruwren)](https://crates.io/crates/ruwren) [![docs.rs](https://docs.rs/ruwren/badge.svg)](https://docs.rs/ruwren/)
 
-Build status: [![Travis CI](https://travis-ci.com/Jengamon/ruwren.svg?branch=master)](https://travis-ci.com/github/Jengamon/ruwren)
+<!-- TODO make a CI again??? -->
 
 Here is an attempt at making some Rust Wren bindings in a more Rust style.
 It acts at times pretty transparently (you do have to deal with the slot / foreign API), but should be
@@ -8,6 +8,8 @@ It acts at times pretty transparently (you do have to deal with the slot / forei
 - More typesafe than using the C API directly
 - Shouldn't get in the way of quick execution
 - Should be relatively simple to get started
+
+MSRV: Rust 1.85.1
 
 ## Including
 
@@ -216,3 +218,7 @@ and panics are unhandleable.
 This means that some idioms of the v1 foreign API (namely `get_slot_checked!`) are not very good on the platform. Basically, anything that panics doesn't work well.
 
 With a minimal change the the v2 foreign API (namely, having the constructor be fallible) means that v2 should work relatively unchanged on web, and v1 is *usable*, it just shouldn't trigger a panic, or the wasm runtime will flip the table.
+
+## `#![no_std]`
+
+Thanks to @Conaclos, we have support for `#![no_std]` environments! To use the older v1 API, the `std` feature must be enabled.
