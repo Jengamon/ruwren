@@ -496,13 +496,15 @@ mod foobar {
 
     impl WrenTo for Foo {
         fn to_vm(self, vm: &ruwren::VM, slot: ruwren::SlotId, scratch_start: ruwren::SlotId) {
-            vm.set_slot_new_foreign_scratch::<_, _, FooInstance>(
-                module_name(),
-                FooClass::name(),
-                self.into(),
-                slot,
-                scratch_start,
-            )
+            unsafe {
+                vm.set_slot_new_foreign_scratch::<_, _, FooInstance>(
+                    module_name(),
+                    FooClass::name(),
+                    self.into(),
+                    slot,
+                    scratch_start,
+                )
+            }
             .unwrap();
         }
     }

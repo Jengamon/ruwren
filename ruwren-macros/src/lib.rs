@@ -823,8 +823,7 @@ impl WrenImplValidFn {
                     {
                         use ruwren::foreign_v2::V2Class;
                         vm_borrow.ensure_slots(1);
-                        let inst = vm_borrow
-                            .get_slot_foreign_mut::<#instance_name>(0)
+                        let inst = unsafe {vm_borrow.get_slot_foreign_mut::<#instance_name>(0)}
                             .unwrap_or_else(|| panic!(
                                 "Tried to call {0} of {1} on non-{1} type",
                                 stringify!($inf),
@@ -1557,13 +1556,15 @@ pub fn wren_module(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
                         const SCRATCH_SPACE: usize = 1;
                         #[inline]
                         fn to_vm(self, vm: &ruwren::VM, slot: ruwren::SlotId, scratch_start: ruwren::SlotId) {
-                            vm.set_slot_new_foreign_scratch::<_, _, #instance_ty>(
-                                module_name(),
-                                #class_ty::name(),
-                                self.into(),
-                                slot,
-                                scratch_start,
-                            )
+                            unsafe {
+                                vm.set_slot_new_foreign_scratch::<_, _, #instance_ty>(
+                                    module_name(),
+                                    #class_ty::name(),
+                                    self.into(),
+                                    slot,
+                                    scratch_start,
+                                )
+                            }
                             .unwrap();
                         }
                     }

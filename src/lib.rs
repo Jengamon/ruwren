@@ -950,10 +950,22 @@ impl VM {
 
     pub fn get_slot_foreign<T: 'static + ClassObject>(&self, slot: SlotId) -> Option<&T> {
         self.ensure_slots(slot + 1);
-        self.get_slot_foreign_mut(slot).map(|mr| &*mr)
+        unsafe { self.get_slot_foreign_mut(slot).map(|mr| &*mr) }
     }
 
-    pub fn get_slot_foreign_mut<T: 'static + ClassObject>(&self, slot: SlotId) -> Option<&mut T> {
+    /// Access a Wren API slot mutably
+    ///
+    /// # Safety
+    ///
+    /// This function should not be called more than once with the same [`SlotId`] to prevent an aliased mutable
+    /// reference! (This method is generally a footgun and should not be called directly.)
+    #[allow(
+        clippy::mut_from_ref,
+        reason = "safety requirement upholds aliasing requirement"
+    )]
+    pub unsafe fn get_slot_foreign_mut<T: 'static + ClassObject>(
+        &self, slot: SlotId,
+    ) -> Option<&mut T> {
         self.ensure_slots(slot + 1);
         if self.get_slot_type(slot) != SlotType::Foreign {
             return None;
@@ -1035,17 +1047,37 @@ impl VM {
     /// If it's type matches with type T, will create a new instance in the given slot
     ///
     /// WARNING: This *will* overwrite slot 0, so be careful.
+    ///
+    /// # Safety
+    ///
+    /// This function should not be called more than once for a given slot. (Again, very footgun method.)
+    #[allow(
+        clippy::mut_from_ref,
+        reason = "safety requirement upholds aliasing requirement"
+    )]
     pub fn set_slot_new_foreign<M: AsRef<str>, C: AsRef<str>, T: 'static + ClassObject>(
         &self, module: M, class: C, object: T, slot: SlotId,
     ) -> Result<&mut T, ForeignSendError> {
-        self.set_slot_new_foreign_scratch(module, class, object, slot, 0)
+        unsafe { self.set_slot_new_foreign_scratch(module, class, object, slot, 0) }
     }
 
     /// Looks up the specified module for the given class
     /// If it's type matches with type T, will create a new instance in the given slot
     ///
     /// WARNING: This *will* overwrite slot `scratch`, so be careful.
-    pub fn set_slot_new_foreign_scratch<M: AsRef<str>, C: AsRef<str>, T: 'static + ClassObject>(
+    ///
+    /// # Safety
+    ///
+    /// This function should not be called more than once for a given slot. (Again, very footgun method.)
+    #[allow(
+        clippy::mut_from_ref,
+        reason = "safety requirement upholds aliasing requirement"
+    )]
+    pub unsafe fn set_slot_new_foreign_scratch<
+        M: AsRef<str>,
+        C: AsRef<str>,
+        T: 'static + ClassObject,
+    >(
         &self, module: M, class: C, object: T, slot: SlotId, scratch: SlotId,
     ) -> Result<&mut T, ForeignSendError> {
         self.ensure_slots(slot.max(scratch) + 1);

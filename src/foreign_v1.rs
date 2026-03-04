@@ -191,7 +191,7 @@ macro_rules! create_module {
             let vm_borrow = ::core::panic::AssertUnwindSafe(vm.borrow());
             match catch_unwind(|| {
                 vm_borrow.ensure_slots(1);
-                let inst = vm_borrow.get_slot_foreign_mut::<$name>(0)
+                let inst = unsafe { vm_borrow.get_slot_foreign_mut::<$name>(0) }
                     .expect(&format!("Tried to call {0} of {1} on non-{1} type", stringify!($inf), ::core::any::type_name::<$name>()));
                 inst.$inf(&*vm_borrow)
             }) {
@@ -320,7 +320,7 @@ macro_rules! send_foreign {
     ($vm:expr, $modl:expr, $class:expr, $obj:expr => $slot:expr) => {{
         use ::core::result::Result::{Err, Ok};
         let obj_name = $crate::type_name_of(&$obj);
-        match $vm.set_slot_new_foreign($modl, $class, $obj, $slot) {
+        match unsafe { $vm.set_slot_new_foreign($modl, $class, $obj, $slot) } {
             Err(e) => ::core::panic!(
                 "rust error [{}:{}]: Could not send type {:?} as [{}] {}: {}",
                 file!(),
